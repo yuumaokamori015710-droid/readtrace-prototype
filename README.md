@@ -17,7 +17,8 @@ http://127.0.0.1:8011/reading-prototype.html
 
 ## GitHub Pages
 
-This repository deploys the static `outputs` directory with GitHub Actions.
+This repository deploys the static `outputs` directory from the `gh-pages`
+branch.
 
 The GitHub Pages version does not run the local `/api/books` proxy. It falls back
 to the built-in sample catalog when external book search is unavailable.
