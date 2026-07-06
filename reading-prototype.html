@@ -1133,7 +1133,7 @@
           </label>
           <div class="catalog-meta">
             <span id="catalogCount">0件</span>
-            <span id="catalogSourceLabel">ローカルDB + Google Books検索</span>
+            <span id="catalogSourceLabel">ローカルDB + Open Library / openBD検索</span>
           </div>
           <div class="catalog-list" id="catalogList"></div>
         </div>
@@ -1280,27 +1280,27 @@
     ];
 
     const bookDatabase = [
-      { id: "b001", title: "身体はトラウマを記録する", author: "ベッセル・ヴァン・デア・コーク", genre: "心理・医療", source: "Google Books", cover: "https://covers.openlibrary.org/b/isbn/9780143127741-L.jpg", description: "心と身体のつながりを扱うノンフィクション。読後の変化を記録しやすい一冊。" },
-      { id: "b002", title: "FACTFULNESS", author: "ハンス・ロスリング", genre: "社会・データ", source: "Google Books", cover: "https://covers.openlibrary.org/b/isbn/9781250107817-L.jpg", description: "世界の見方をデータから整える本。思い込みの棚卸しに向く。" },
-      { id: "b003", title: "限りある時間の使い方", author: "オリバー・バークマン", genre: "時間術・思想", source: "Google Books", cover: "https://covers.openlibrary.org/b/isbn/9780374159122-L.jpg", description: "時間の有限性を前提に、選び方を見直す本。" },
-      { id: "b004", title: "DIE WITH ZERO", author: "ビル・パーキンス", genre: "人生設計", source: "Google Books", cover: "https://covers.openlibrary.org/b/isbn/9780358567097-L.jpg", description: "お金と経験の使い切り方から人生を考える。" },
+      { id: "b001", title: "身体はトラウマを記録する", author: "ベッセル・ヴァン・デア・コーク", genre: "心理・医療", source: "Open Library", cover: "https://covers.openlibrary.org/b/isbn/9780143127741-L.jpg", description: "心と身体のつながりを扱うノンフィクション。読後の変化を記録しやすい一冊。" },
+      { id: "b002", title: "FACTFULNESS", author: "ハンス・ロスリング", genre: "社会・データ", source: "Open Library", cover: "https://covers.openlibrary.org/b/isbn/9781250107817-L.jpg", description: "世界の見方をデータから整える本。思い込みの棚卸しに向く。" },
+      { id: "b003", title: "限りある時間の使い方", author: "オリバー・バークマン", genre: "時間術・思想", source: "Open Library", cover: "https://covers.openlibrary.org/b/isbn/9780374159122-L.jpg", description: "時間の有限性を前提に、選び方を見直す本。" },
+      { id: "b004", title: "DIE WITH ZERO", author: "ビル・パーキンス", genre: "人生設計", source: "Open Library", cover: "https://covers.openlibrary.org/b/isbn/9780358567097-L.jpg", description: "お金と経験の使い切り方から人生を考える。" },
       { id: "b005", title: "思考の整理学", author: "外山滋比古", genre: "知的生産", source: "openBD", cover: "https://covers.openlibrary.org/b/isbn/9784480020475-L.jpg", description: "考える技術とアイデアの寝かせ方を扱う定番。" },
-      { id: "b006", title: "Atomic Habits", author: "James Clear", genre: "習慣・自己改善", source: "Google Books", cover: "https://covers.openlibrary.org/b/isbn/9780735211292-L.jpg", description: "小さな習慣を積み重ねる設計についての実践書。" },
+      { id: "b006", title: "Atomic Habits", author: "James Clear", genre: "習慣・自己改善", source: "Open Library", cover: "https://covers.openlibrary.org/b/isbn/9780735211292-L.jpg", description: "小さな習慣を積み重ねる設計についての実践書。" },
       { id: "b007", title: "The Design of Everyday Things", author: "Don Norman", genre: "デザイン", source: "Open Library", cover: "https://covers.openlibrary.org/b/isbn/9780465050659-L.jpg", description: "使いやすさと認知の観点からデザインを考える古典。" },
       { id: "b008", title: "暇と退屈の倫理学", author: "國分功一郎", genre: "哲学", source: "openBD", cover: "https://covers.openlibrary.org/b/isbn/9784022618738-L.jpg", description: "退屈、消費、自由をめぐる思考を深める本。" },
       { id: "b009", title: "嫌われる勇気", author: "岸見一郎・古賀史健", genre: "心理・哲学", source: "openBD", cover: "https://covers.openlibrary.org/b/isbn/9784478025819-L.jpg", description: "アドラー心理学を対話形式で読む。読後の行動変化につながりやすい。" },
       { id: "b010", title: "夜と霧", author: "ヴィクトール・E・フランクル", genre: "思想・歴史", source: "NDL Search", cover: "https://covers.openlibrary.org/b/isbn/9784622006015-L.jpg", description: "極限状況における人間の意味への意志を描く。" },
-      { id: "b011", title: "人を動かす", author: "D・カーネギー", genre: "コミュニケーション", source: "Google Books", cover: "https://covers.openlibrary.org/b/isbn/9780671027032-L.jpg", description: "人間関係と影響力についての古典。" },
-      { id: "b012", title: "エッセンシャル思考", author: "グレッグ・マキューン", genre: "仕事術", source: "Google Books", cover: "https://covers.openlibrary.org/b/isbn/9780804137386-L.jpg", description: "より少なく、しかしより良く選ぶための考え方。" },
+      { id: "b011", title: "人を動かす", author: "D・カーネギー", genre: "コミュニケーション", source: "Open Library", cover: "https://covers.openlibrary.org/b/isbn/9780671027032-L.jpg", description: "人間関係と影響力についての古典。" },
+      { id: "b012", title: "エッセンシャル思考", author: "グレッグ・マキューン", genre: "仕事術", source: "Open Library", cover: "https://covers.openlibrary.org/b/isbn/9780804137386-L.jpg", description: "より少なく、しかしより良く選ぶための考え方。" },
       { id: "b013", title: "イシューからはじめよ", author: "安宅和人", genre: "思考法・仕事", source: "openBD", cover: "https://covers.openlibrary.org/b/isbn/9784862760852-L.jpg", description: "解くべき問いを見極めるための思考法。" },
       { id: "b014", title: "具体と抽象", author: "細谷功", genre: "思考法", source: "openBD", cover: "https://covers.openlibrary.org/b/isbn/9784907623104-L.jpg", description: "物事を行き来して理解するための思考トレーニング。" },
-      { id: "b015", title: "サピエンス全史", author: "ユヴァル・ノア・ハラリ", genre: "歴史・社会", source: "Google Books", cover: "https://covers.openlibrary.org/b/isbn/9780062316097-L.jpg", description: "人類史を大きな視点から捉えるノンフィクション。" },
+      { id: "b015", title: "サピエンス全史", author: "ユヴァル・ノア・ハラリ", genre: "歴史・社会", source: "Open Library", cover: "https://covers.openlibrary.org/b/isbn/9780062316097-L.jpg", description: "人類史を大きな視点から捉えるノンフィクション。" },
       { id: "b016", title: "銃・病原菌・鉄", author: "ジャレド・ダイアモンド", genre: "歴史・文明", source: "NDL Search", cover: "https://covers.openlibrary.org/b/isbn/9780393317558-L.jpg", description: "文明の差を環境要因から考える大著。" },
-      { id: "b017", title: "影響力の武器", author: "ロバート・B・チャルディーニ", genre: "心理・マーケティング", source: "Google Books", cover: "https://covers.openlibrary.org/b/isbn/9780061241895-L.jpg", description: "説得と意思決定の心理メカニズムを扱う。" },
+      { id: "b017", title: "影響力の武器", author: "ロバート・B・チャルディーニ", genre: "心理・マーケティング", source: "Open Library", cover: "https://covers.openlibrary.org/b/isbn/9780061241895-L.jpg", description: "説得と意思決定の心理メカニズムを扱う。" },
       { id: "b018", title: "失敗の本質", author: "戸部良一ほか", genre: "組織論・歴史", source: "openBD", cover: "https://covers.openlibrary.org/b/isbn/9784122018334-L.jpg", description: "組織の意思決定と失敗から学ぶ日本的組織論の定番。" },
       { id: "b019", title: "プロダクトマネジメントのすべて", author: "及川卓也・曽根原春樹・小城久美子", genre: "プロダクト", source: "openBD", cover: "https://covers.openlibrary.org/b/isbn/9784798166391-L.jpg", description: "プロダクトづくりの全体像をつかむための実務書。" },
       { id: "b020", title: "ゼロ秒思考", author: "赤羽雄二", genre: "思考法・習慣", source: "openBD", cover: "https://covers.openlibrary.org/b/isbn/9784478020999-L.jpg", description: "メモ書きで思考を早く深くする実践法。" },
-      { id: "b021", title: "Lean Startup", author: "Eric Ries", genre: "起業・プロダクト", source: "Google Books", cover: "https://covers.openlibrary.org/b/isbn/9780307887894-L.jpg", description: "仮説検証と学習を軸にしたスタートアップの方法論。" },
+      { id: "b021", title: "Lean Startup", author: "Eric Ries", genre: "起業・プロダクト", source: "Open Library", cover: "https://covers.openlibrary.org/b/isbn/9780307887894-L.jpg", description: "仮説検証と学習を軸にしたスタートアップの方法論。" },
       { id: "b022", title: "問いのデザイン", author: "安斎勇樹・塩瀬隆之", genre: "対話・デザイン", source: "openBD", cover: "https://covers.openlibrary.org/b/isbn/9784761527433-L.jpg", description: "よい問いから対話と創造を生み出すための本。" },
       { id: "b023", title: "独学大全", author: "読書猿", genre: "学習法", source: "openBD", cover: "https://covers.openlibrary.org/b/isbn/9784478108536-L.jpg", description: "学び方そのものを体系化した大きな道具箱。" },
       { id: "b024", title: "コンテナ物語", author: "マルク・レビンソン", genre: "経済・物流", source: "NDL Search", cover: "https://covers.openlibrary.org/b/isbn/9780691136400-L.jpg", description: "物流の変化から世界経済を見るノンフィクション。" },
@@ -1385,56 +1385,126 @@
       `).join("");
     }
 
-    function normalizeGoogleBook(item) {
-      const info = item.volumeInfo || {};
-      const isbn13 = (info.industryIdentifiers || []).find((id) => id.type === "ISBN_13")?.identifier;
-      const isbn10 = (info.industryIdentifiers || []).find((id) => id.type === "ISBN_10")?.identifier;
+    function pickIsbn(isbns = []) {
+      const clean = isbns.map((isbn) => String(isbn).replace(/[^0-9X]/gi, ""));
+      return clean.find((isbn) => isbn.length === 13) || clean.find((isbn) => isbn.length === 10) || "";
+    }
+
+    function extractIsbn(text) {
+      const clean = String(text || "").replace(/[^0-9X]/gi, "");
+      return clean.length === 10 || clean.length === 13 ? clean : "";
+    }
+
+    function coverFromOpenLibrary(doc, isbn) {
+      if (doc.cover_i) return `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`;
+      if (isbn) return `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
+      return "https://covers.openlibrary.org/b/isbn/9784022618738-L.jpg";
+    }
+
+    function normalizeOpenLibraryBook(doc) {
+      const isbn = pickIsbn(doc.isbn || []);
+      const year = doc.first_publish_year ? `${doc.first_publish_year}年` : "";
+      const subject = (doc.subject || doc.person || doc.place || []).find(Boolean);
       return {
-        id: `google-${item.id}`,
-        title: info.title || "タイトル不明",
-        author: (info.authors || ["著者不明"]).join("・"),
-        genre: (info.categories || ["未分類"])[0],
-        source: "Google Books",
-        sourceId: item.id,
-        isbn13,
-        isbn10,
-        cover: info.imageLinks?.thumbnail?.replace("http://", "https://") || "https://covers.openlibrary.org/b/isbn/9784022618738-L.jpg",
-        description: info.description ? info.description.replace(/<[^>]+>/g, "").slice(0, 100) : "Google Booksから取得した書誌候補。"
+        id: `ol-${doc.key || doc.cover_edition_key || doc.edition_key?.[0] || crypto.randomUUID()}`,
+        title: doc.title || "タイトル不明",
+        author: (doc.author_name || ["著者不明"]).slice(0, 3).join("・"),
+        genre: subject || "未分類",
+        source: "Open Library",
+        sourceId: doc.key,
+        isbn13: isbn.length === 13 ? isbn : "",
+        isbn10: isbn.length === 10 ? isbn : "",
+        cover: coverFromOpenLibrary(doc, isbn),
+        description: [year, doc.publisher?.[0], "Open Libraryから取得した書誌候補。"].filter(Boolean).join(" / ")
       };
     }
 
-    async function searchGoogleBooks(query) {
+    function normalizeOpenBdBook(item, fallback) {
+      const summary = item?.summary || {};
+      if (!summary.title) return fallback;
+      return {
+        ...fallback,
+        id: `openbd-${summary.isbn || fallback.isbn13 || fallback.isbn10 || fallback.id}`,
+        title: summary.title || fallback.title,
+        author: summary.author || fallback.author,
+        genre: summary.publisher || fallback.genre || "未分類",
+        source: fallback.source === "Open Library" ? "Open Library + openBD" : "openBD",
+        isbn13: summary.isbn || fallback.isbn13,
+        cover: summary.cover || fallback.cover,
+        description: [summary.pubdate, summary.publisher, "openBDで日本語書誌を補正。"].filter(Boolean).join(" / ")
+      };
+    }
+
+    async function fetchJson(url, timeout = 6500) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeout);
+      try {
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) throw new Error(`${response.status}`);
+        return await response.json();
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    async function enrichWithOpenBd(books) {
+      const isbnBooks = books.filter((book) => book.isbn13 || book.isbn10).slice(0, 12);
+      if (!isbnBooks.length) return books;
+      try {
+        const isbnList = isbnBooks.map((book) => book.isbn13 || book.isbn10).join(",");
+        const data = await fetchJson(`https://api.openbd.jp/v1/get?isbn=${encodeURIComponent(isbnList)}`, 5000);
+        const enrichedByIsbn = new Map();
+        isbnBooks.forEach((book, index) => {
+          const isbn = book.isbn13 || book.isbn10;
+          enrichedByIsbn.set(isbn, normalizeOpenBdBook(data[index], book));
+        });
+        return books.map((book) => enrichedByIsbn.get(book.isbn13 || book.isbn10) || book);
+      } catch {
+        catalogRemoteError = catalogRemoteError || "openBDの補正に失敗しました";
+        return books;
+      }
+    }
+
+    async function searchOpenBdByIsbn(isbn) {
+      try {
+        const data = await fetchJson(`https://api.openbd.jp/v1/get?isbn=${encodeURIComponent(isbn)}`, 5000);
+        const fallback = {
+          id: `openbd-${isbn}`,
+          title: "タイトル不明",
+          author: "著者不明",
+          genre: "未分類",
+          source: "openBD",
+          isbn13: isbn.length === 13 ? isbn : "",
+          isbn10: isbn.length === 10 ? isbn : "",
+          cover: `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`,
+          description: "openBDから取得した書誌候補。"
+        };
+        const book = normalizeOpenBdBook(data[0], fallback);
+        return book.title === "タイトル不明" ? [] : [book];
+      } catch {
+        catalogRemoteError = "openBDに接続できません";
+        return [];
+      }
+    }
+
+    async function searchExternalBooks(query) {
       if (!query || query.length < 2) return [];
-      return new Promise((resolve) => {
-        catalogRemoteError = "";
-        const request = new XMLHttpRequest();
-        request.open("GET", `/api/books?q=${encodeURIComponent(query)}`, true);
-        request.timeout = 6500;
-        request.onload = () => {
-          if (request.status < 200 || request.status >= 300) {
-            catalogRemoteError = "Google Books APIに接続できません";
-            resolve([]);
-            return;
-          }
-          try {
-            const data = JSON.parse(request.responseText);
-            catalogRemoteError = data.error || "";
-            resolve((data.items || []).map(normalizeGoogleBook));
-          } catch {
-            catalogRemoteError = "書誌データの読み込みに失敗しました";
-            resolve([]);
-          }
-        };
-        request.onerror = () => {
-          catalogRemoteError = "Google Books APIに接続できません";
-          resolve([]);
-        };
-        request.ontimeout = () => {
-          catalogRemoteError = "Google Books APIの応答が遅すぎます";
-          resolve([]);
-        };
-        request.send();
-      });
+      catalogRemoteError = "";
+      const isbn = extractIsbn(query);
+      if (isbn) return searchOpenBdByIsbn(isbn);
+      try {
+        const params = new URLSearchParams({
+          title: query,
+          limit: "16",
+          fields: "key,title,author_name,isbn,cover_i,cover_edition_key,edition_key,first_publish_year,publisher,subject,person,place"
+        });
+        const data = await fetchJson(`https://openlibrary.org/search.json?${params.toString()}`, 6500);
+        const openLibraryResults = (data.docs || []).map(normalizeOpenLibraryBook);
+        return await enrichWithOpenBd(openLibraryResults);
+      } catch {
+        catalogRemoteError = "Open Libraryに接続できません";
+        return [];
+      }
     }
 
     function mergeCatalogResults(localResults, remoteResults) {
@@ -1454,18 +1524,18 @@
         const haystack = `${book.title} ${book.author} ${book.genre} ${book.source}`.toLowerCase();
         return !query || haystack.includes(query);
       });
-      const remoteResults = await searchGoogleBooks(query);
+      const remoteResults = await searchExternalBooks(query);
       if (requestId !== catalogRequestId) return;
       const results = mergeCatalogResults(localResults, remoteResults).slice(0, 24);
       currentCatalogResults = results;
 
       document.querySelector("#catalogCount").textContent = `${results.length}件表示（ローカル${localResults.length}件 / 外部${remoteResults.length}件）`;
       document.querySelector("#catalogSourceLabel").textContent = remoteResults.length
-        ? "Google Books APIから取得"
+        ? "Open Library / openBDから取得"
         : catalogRemoteError
           ? `${catalogRemoteError}。ローカルDBを表示`
           : query.length >= 2
-            ? "Google Books APIを検索しましたが外部0件。ローカルDBを表示"
+            ? "外部APIを検索しましたが外部0件。ローカルDBを表示"
             : "ローカルDBを表示";
       document.querySelector("#catalogList").innerHTML = results.map((book) => `
         <button class="catalog-card ${book.id === selectedCatalogBookId ? "selected" : ""}" type="button" data-book-id="${book.id}">
