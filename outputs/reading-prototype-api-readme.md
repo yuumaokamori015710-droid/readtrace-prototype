@@ -31,4 +31,5 @@ Browser -> Open Library search API
 - openBD is best for Japanese books when the ISBN is known.
 - Open Library is best for international/English title search.
 - NDL Search requires visible credit and has usage guidance for commercial or continuous access.
+- Supabase Auth is optional in the prototype. When configured, new shelf items are saved to `readtrace_books`.
 - For a production app, cache results and keep a user-editable book master.
