@@ -1473,10 +1473,11 @@
 
     function getSupabaseClient() {
       const config = readSupabaseConfig();
-      if (!hasSupabaseConfig(config) || !window.supabase?.createClient) return null;
+      const supabaseGlobal = window.supabase || globalThis.supabase;
+      if (!hasSupabaseConfig(config) || !supabaseGlobal?.createClient) return null;
       const key = `${config.url}:${config.anonKey.slice(0, 12)}`;
       if (!supabaseClient || supabaseClientKey !== key) {
-        supabaseClient = window.supabase.createClient(config.url, config.anonKey);
+        supabaseClient = supabaseGlobal.createClient(config.url, config.anonKey);
         supabaseClientKey = key;
       }
       return supabaseClient;
