@@ -1,57 +1,29 @@
-# ReadTrace Prototype: Google Books API
+# ReadTrace Prototype: Book APIs
 
-This prototype searches books through a local proxy:
-
-```text
-Browser -> /api/books -> Google Books API
-```
-
-Do not put the Google Books API key in `reading-prototype.html`.
-
-## Setup
-
-1. Copy `.env.example` to `.env`.
-2. Put your Google Books API key in `.env`.
-
-```env
-GOOGLE_BOOKS_API_KEY=your_key_here
-PORT=8010
-# Optional, only when your network requires it:
-# HTTPS_PROXY=http://proxy.example.com:8080
-```
-
-3. Start the prototype server.
-
-```powershell
-.\start-reading-prototype.ps1
-```
-
-4. Open:
+The prototype uses free, keyless book APIs directly from the browser so it can
+run on GitHub Pages.
 
 ```text
-http://127.0.0.1:8010/reading-prototype.html
+Browser -> Open Library search API
+Browser -> openBD ISBN API
 ```
 
-## Google Cloud
+## APIs
 
-Enable the Books API in Google Cloud Console, then create an API key under Credentials.
+- Open Library: title search, author names, ISBNs, and cover candidates.
+- openBD: Japanese bibliographic metadata and cover correction when an ISBN is available.
+- Local sample catalog: fallback for searches with no external result.
 
-Recommended production settings:
+## Search Flow
 
-- Restrict the key to the Books API.
-- Keep the key on the server only.
-- Add caching for repeated searches.
-- Add rate limiting per user/IP.
+1. If the search query looks like an ISBN, call openBD directly.
+2. Otherwise, search Open Library by title.
+3. If Open Library returns ISBNs, enrich up to 12 candidates with openBD.
+4. Merge external results with the local sample catalog.
 
-## Proxy
+## Notes
 
-Node's built-in `https.get` does not automatically use your OS proxy settings. This
-prototype reads `HTTPS_PROXY` or `HTTP_PROXY` from `.env` and uses an HTTP CONNECT
-tunnel for Google Books API requests.
-
-Examples:
-
-```env
-HTTPS_PROXY=http://127.0.0.1:8080
-HTTPS_PROXY=http://user:password@proxy.example.com:8080
-```
+- No Google Books API key is required for the GitHub Pages prototype.
+- Open Library is best for international/English title search.
+- openBD is best for Japanese books when the ISBN is known.
+- For a production app, cache results and keep a user-editable book master.
