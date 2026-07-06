@@ -1133,7 +1133,7 @@
           </label>
           <div class="catalog-meta">
             <span id="catalogCount">0件</span>
-            <span id="catalogSourceLabel">ローカルDB + Open Library / openBD検索</span>
+            <span id="catalogSourceLabel">ローカルDB + NDLサーチ / Open Library / openBD検索</span>
           </div>
           <div class="catalog-list" id="catalogList"></div>
         </div>
@@ -1395,6 +1395,53 @@
       return clean.length === 10 || clean.length === 13 ? clean : "";
     }
 
+    function hasJapanese(text) {
+      return /[\u3040-\u30ff\u3400-\u9fff]/.test(text);
+    }
+
+    function compactTitle(text) {
+      return String(text || "").replace(/[\s:：・「」『』"']/g, "").toLowerCase();
+    }
+
+    function isRelevantTitle(title, query) {
+      const target = compactTitle(title);
+      const keyword = compactTitle(query);
+      if (!target || !keyword) return false;
+      if (target === keyword) return true;
+      if (keyword.length <= 3) return target.startsWith(keyword);
+      return target.includes(keyword);
+    }
+
+    function mergeUniqueBooks(...groups) {
+      const seen = new Set();
+      return groups.flat().filter((book) => {
+        const isbn = book.isbn13 || book.isbn10;
+        const key = isbn || `${compactTitle(book.title)}-${compactTitle(book.author)}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+
+    function xmlText(node, selector) {
+      return node.querySelector(selector)?.textContent?.trim() || "";
+    }
+
+    function xmlTexts(node, selector) {
+      return Array.from(node.querySelectorAll(selector))
+        .map((item) => item.textContent.trim())
+        .filter(Boolean);
+    }
+
+    function isNdlBookCategory(categories) {
+      return categories.some((category) => category.includes("図書") || category.includes("本"));
+    }
+
+    function isbnFromText(text) {
+      const match = String(text || "").match(/97[89][-\d]{10,17}|[0-9X][-\d]{8,15}[0-9X]/i);
+      return match ? match[0].replace(/[^0-9X]/gi, "") : "";
+    }
+
     function coverFromOpenLibrary(doc, isbn) {
       if (doc.cover_i) return `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`;
       if (isbn) return `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
@@ -1435,6 +1482,32 @@
       };
     }
 
+    function normalizeNdlItem(item) {
+      const title = xmlText(item, "title") || xmlText(item, "dc\\:title");
+      const creators = xmlTexts(item, "dc\\:creator");
+      const author = creators.length ? creators.join("・") : xmlText(item, "author") || "著者不明";
+      const publisher = xmlText(item, "dc\\:publisher");
+      const issued = xmlText(item, "dcterms\\:issued") || xmlText(item, "dc\\:date");
+      const categories = xmlTexts(item, "category");
+      const descriptions = xmlTexts(item, "description").concat(xmlTexts(item, "dc\\:description"));
+      const identifiers = xmlTexts(item, "dc\\:identifier");
+      const isbn = pickIsbn(identifiers.concat(descriptions.map(isbnFromText)));
+      const link = xmlText(item, "link") || xmlText(item, "guid");
+      return {
+        id: `ndl-${isbn || link || title}`,
+        title: title || "タイトル不明",
+        author,
+        genre: publisher || categories.find((category) => category !== "紙" && category !== "デジタル") || "図書",
+        source: "NDLサーチ",
+        sourceId: link,
+        isbn13: isbn.length === 13 ? isbn : "",
+        isbn10: isbn.length === 10 ? isbn : "",
+        cover: isbn ? `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg` : "https://covers.openlibrary.org/b/isbn/9784022618738-L.jpg",
+        description: [issued, publisher, "NDLサーチから取得した日本語書誌候補。"].filter(Boolean).join(" / "),
+        categories
+      };
+    }
+
     async function fetchJson(url, timeout = 6500) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeout);
@@ -1442,6 +1515,21 @@
         const response = await fetch(url, { signal: controller.signal });
         if (!response.ok) throw new Error(`${response.status}`);
         return await response.json();
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    async function fetchXml(url, timeout = 6500) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeout);
+      try {
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) throw new Error(`${response.status}`);
+        const text = await response.text();
+        const doc = new DOMParser().parseFromString(text, "application/xml");
+        if (doc.querySelector("parsererror")) throw new Error("XML parse error");
+        return doc;
       } finally {
         clearTimeout(timer);
       }
@@ -1487,11 +1575,28 @@
       }
     }
 
-    async function searchExternalBooks(query) {
-      if (!query || query.length < 2) return [];
-      catalogRemoteError = "";
-      const isbn = extractIsbn(query);
-      if (isbn) return searchOpenBdByIsbn(isbn);
+    async function searchNdlBooks(query) {
+      try {
+        const params = new URLSearchParams({
+          title: query,
+          cnt: "16",
+          dpid: "iss-ndl-opac"
+        });
+        const doc = await fetchXml(`https://ndlsearch.ndl.go.jp/api/opensearch?${params.toString()}`, 6500);
+        const ndlResults = Array.from(doc.querySelectorAll("item"))
+          .map(normalizeNdlItem)
+          .filter((book) => book.title && book.title !== "タイトル不明" && isNdlBookCategory(book.categories || []))
+          .filter((book) => isRelevantTitle(book.title, query))
+          .sort((a, b) => Number(b.title === query) - Number(a.title === query))
+          .map(({ categories, ...book }) => book);
+        return await enrichWithOpenBd(ndlResults);
+      } catch {
+        catalogRemoteError = "NDLサーチに接続できません";
+        return [];
+      }
+    }
+
+    async function searchOpenLibraryBooks(query) {
       try {
         const params = new URLSearchParams({
           title: query,
@@ -1505,6 +1610,20 @@
         catalogRemoteError = "Open Libraryに接続できません";
         return [];
       }
+    }
+
+    async function searchExternalBooks(query) {
+      if (!query || query.length < 2) return [];
+      catalogRemoteError = "";
+      const isbn = extractIsbn(query);
+      if (isbn) return searchOpenBdByIsbn(isbn);
+      if (hasJapanese(query)) {
+        const ndlResults = await searchNdlBooks(query);
+        if (ndlResults.length >= 8) return ndlResults;
+        const openLibraryResults = await searchOpenLibraryBooks(query);
+        return mergeUniqueBooks(ndlResults, openLibraryResults);
+      }
+      return searchOpenLibraryBooks(query);
     }
 
     function mergeCatalogResults(localResults, remoteResults) {
@@ -1531,7 +1650,7 @@
 
       document.querySelector("#catalogCount").textContent = `${results.length}件表示（ローカル${localResults.length}件 / 外部${remoteResults.length}件）`;
       document.querySelector("#catalogSourceLabel").textContent = remoteResults.length
-        ? "Open Library / openBDから取得"
+        ? "NDLサーチ / Open Library / openBDから取得"
         : catalogRemoteError
           ? `${catalogRemoteError}。ローカルDBを表示`
           : query.length >= 2
