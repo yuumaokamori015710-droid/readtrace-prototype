@@ -584,6 +584,23 @@
       margin-right: 6px;
     }
 
+    .empty-state {
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      background: #f8f9f5;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .empty-state strong {
+      display: block;
+      color: var(--ink);
+      font-size: 15px;
+      margin-bottom: 4px;
+    }
+
     .mood-map {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1161,9 +1178,9 @@
       <section class="reading-goal">
         <h3>2026 読書目標</h3>
         <div class="goal-ring">
-          <div>32/45<span>冊達成</span></div>
+          <div id="sidebarGoalValue">0/45<span>冊達成</span></div>
         </div>
-        <p style="margin:0;color:var(--muted);font-size:13px;line-height:1.55;">今月は「考え方が変わった本」が多め。レビュー率は84%。</p>
+        <p id="sidebarGoalText" style="margin:0;color:var(--muted);font-size:13px;line-height:1.55;">読書記録を追加すると、ここに目標進捗が出ます。</p>
       </section>
     </aside>
 
@@ -1194,9 +1211,9 @@
             <p>本棚、レビュー、友達の感想共有に加えて、読後の気分・学び・考え方の変化を記録。自分の読書傾向が、あとからちゃんと使える知識になります。</p>
           </div>
           <div class="hero-stats">
-            <div class="glass"><strong>18</strong><span>今月の読了冊数</span></div>
-            <div class="glass"><strong>42h</strong><span>読書時間</span></div>
-            <div class="glass"><strong>126</strong><span>保存した気づき</span></div>
+            <div class="glass"><strong id="heroDoneCount">0</strong><span>読了冊数</span></div>
+            <div class="glass"><strong id="heroReadingCount">0</strong><span>読んでいる本</span></div>
+            <div class="glass"><strong id="heroWantCount">0</strong><span>読みたい本</span></div>
           </div>
         </div>
 
@@ -1247,7 +1264,7 @@
                 </div>
               </div>
               <div class="genre-wrap">
-                <div class="genre-donut"><div>18冊</div></div>
+                <div class="genre-donut" id="genreDonut"><div id="genreDonutTotal">0冊</div></div>
                 <div class="genre-legend" id="genreLegend"></div>
               </div>
             </section>
@@ -1273,10 +1290,7 @@
               </div>
             </div>
             <div class="mood-map">
-              <div class="mood" style="background:var(--sky);"><strong>31%</strong><span>視野が広がった</span></div>
-              <div class="mood" style="background:#f6dfd3;"><strong>24%</strong><span>行動したくなった</span></div>
-              <div class="mood" style="background:#eee5f0;"><strong>19%</strong><span>問いが増えた</span></div>
-              <div class="mood" style="background:#f4edce;"><strong>14%</strong><span>誰かに勧めたい</span></div>
+              <div class="empty-state" style="grid-column:1 / -1;"><strong>まだ記録がありません</strong>読書記録が増えると、読後の変化がここに集計されます。</div>
             </div>
           </section>
         </div>
@@ -1323,14 +1337,12 @@
               </div>
             </div>
             <div class="review-composer">
-              <img src="https://covers.openlibrary.org/b/isbn/9780143127741-L.jpg" alt="身体はトラウマを記録するの表紙">
+              <img id="reviewCover" src="data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22320%22%20height%3D%22480%22%20viewBox%3D%220%200%20320%20480%22%3E%3Crect%20width%3D%22320%22%20height%3D%22480%22%20fill%3D%22%232f5d48%22%2F%3E%3Crect%20x%3D%2230%22%20y%3D%2230%22%20width%3D%22260%22%20height%3D%22420%22%20fill%3D%22rgba(255%2C255%2C255%2C.12)%22%20stroke%3D%22rgba(255%2C255%2C255%2C.35)%22%20stroke-width%3D%222%22%2F%3E%3Ctext%20x%3D%2250%22%20y%3D%22235%22%20fill%3D%22white%22%20font-size%3D%2228%22%20font-family%3D%22sans-serif%22%20font-weight%3D%22700%22%3EReadTrace%3C%2Ftext%3E%3C%2Fsvg%3E" alt="選択中の本の表紙">
               <form id="reviewForm">
                 <div class="form-grid">
                   <label>本
                     <select name="book">
-                      <option>身体はトラウマを記録する</option>
-                      <option>FACTFULNESS</option>
-                      <option>限りある時間の使い方</option>
+                      <option value="">本を選択</option>
                     </select>
                   </label>
                   <label>評価
@@ -1357,10 +1369,10 @@
                     </select>
                   </label>
                   <label class="wide">感想
-                    <textarea name="review">記憶や感情が頭の中だけではなく身体にも残る、という視点で読み進めると、ケアや働き方の見え方まで変わる。読後に、自分の緊張や反応を少し丁寧に観察したくなった。</textarea>
+                    <textarea name="review" placeholder="感想を入力"></textarea>
                   </label>
                   <label class="wide">この本で変わったこと
-                    <textarea name="change">気合いで片づけず、身体の反応を情報として扱うようになった。</textarea>
+                    <textarea name="change" placeholder="読後に変わった考えや行動を入力"></textarea>
                   </label>
                 </div>
                 <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap;">
@@ -1417,17 +1429,17 @@
       <form id="addForm">
         <div class="catalog-search">
           <label>本マスタから検索
-            <input id="catalogSearch" placeholder="タイトル、著者、ジャンルで検索" value="哲学">
+            <input id="catalogSearch" placeholder="タイトル、著者、ISBNで検索">
           </label>
           <div class="catalog-meta">
             <span id="catalogCount">0件</span>
-            <span id="catalogSourceLabel">ローカルDB + NDLサーチ / Open Library / openBD検索</span>
+            <span id="catalogSourceLabel">NDLサーチ / Open Library / openBD検索</span>
           </div>
           <div class="catalog-list" id="catalogList"></div>
         </div>
         <div class="form-grid">
-          <label>タイトル<input name="title" value="暇と退屈の倫理学"></label>
-          <label>著者<input name="author" value="國分功一郎"></label>
+          <label>タイトル<input name="title"></label>
+          <label>著者<input name="author"></label>
           <label>ステータス
             <select name="status">
               <option value="want">読みたい</option>
@@ -1435,8 +1447,8 @@
               <option value="done">読了</option>
             </select>
           </label>
-          <label>ジャンル<input name="genre" value="哲学"></label>
-          <label class="wide">追加メモ<textarea name="note">読後の気分や問いも一緒に残す。</textarea></label>
+          <label>ジャンル<input name="genre"></label>
+          <label class="wide">追加メモ<textarea name="note" placeholder="読後の気分や問いも一緒に残す"></textarea></label>
         </div>
         <div style="display:flex;justify-content:flex-end;margin-top:14px;">
           <button class="primary" type="submit">本棚に追加</button>
@@ -1610,7 +1622,7 @@
       ["新しい文章力の教室", "唐木元", "文章術"]
     ];
 
-    const bookDatabase = [
+    const seedBookDatabase = [
       { id: "b001", title: "身体はトラウマを記録する", author: "ベッセル・ヴァン・デア・コーク", genre: "心理・医療", source: "Open Library", cover: "https://covers.openlibrary.org/b/isbn/9780143127741-L.jpg", description: "心と身体のつながりを扱うノンフィクション。読後の変化を記録しやすい一冊。" },
       { id: "b002", title: "FACTFULNESS", author: "ハンス・ロスリング", genre: "社会・データ", source: "Open Library", cover: "https://covers.openlibrary.org/b/isbn/9781250107817-L.jpg", description: "世界の見方をデータから整える本。思い込みの棚卸しに向く。" },
       { id: "b003", title: "限りある時間の使い方", author: "オリバー・バークマン", genre: "時間術・思想", source: "Open Library", cover: "https://covers.openlibrary.org/b/isbn/9780374159122-L.jpg", description: "時間の有限性を前提に、選び方を見直す本。" },
@@ -1646,44 +1658,15 @@
       }))
     ];
 
-    const books = [
-      { ...bookDatabase[0], status: "done", rating: "4.8" },
-      { ...bookDatabase[1], status: "done", rating: "4.6" },
-      { ...bookDatabase[2], status: "reading", rating: "4.4" },
-      { ...bookDatabase[3], status: "want", rating: "未評価" },
-      { ...bookDatabase[4], status: "done", rating: "4.2" },
-      { ...bookDatabase[5], status: "reading", rating: "4.5" },
-      { ...bookDatabase[6], status: "done", rating: "4.7" },
-      { ...bookDatabase[7], status: "want", rating: "未評価" }
-    ];
+    const bookDatabase = [];
 
-    const posts = [
-      { user: "Mika", book: "FACTFULNESS", time: "12分前", avatar: "M", quote: "思い込みを減らすには、知識よりもまず自分の反射を疑う必要がある。", meta: "視野が広がった / いいね 24 / コメント 6" },
-      { user: "Kento", book: "限りある時間の使い方", time: "1時間前", avatar: "K", quote: "全部やろうとするほど人生が薄まる、という指摘が痛かった。今週の予定を削った。", meta: "行動したくなった / いいね 18 / コメント 3" },
-      { user: "Aya", book: "身体はトラウマを記録する", time: "昨日", avatar: "A", quote: "身体の反応を責めるのではなく、過去から届いたサインとして見られるようになった。", meta: "考えが変わった / いいね 41 / コメント 9" }
-    ];
-
-    const monthData = [
-      { month: "11月", books: 8, pages: 1740, reviews: 6 },
-      { month: "12月", books: 12, pages: 2860, reviews: 9 },
-      { month: "1月", books: 9, pages: 2140, reviews: 7 },
-      { month: "2月", books: 15, pages: 3920, reviews: 13 },
-      { month: "3月", books: 11, pages: 2510, reviews: 8 },
-      { month: "4月", books: 18, pages: 5120, reviews: 16 },
-      { month: "5月", books: 14, pages: 3780, reviews: 11 },
-      { month: "6月", books: 18, pages: 5842, reviews: 15 }
-    ];
-
-    const genreData = [
-      { label: "思想・哲学", value: 32, color: "var(--sage-strong)" },
-      { label: "小説・文学", value: 24, color: "var(--coral)" },
-      { label: "仕事・学習", value: 19, color: "var(--gold)" },
-      { label: "社会・歴史", value: 25, color: "var(--plum)" }
-    ];
+    const books = [];
+    const posts = [];
+    const monthData = [];
 
     const statusLabel = { done: "読了", reading: "読んでいる", want: "読みたい" };
     let tweetMode = "short";
-    let selectedCatalogBookId = "b008";
+    let selectedCatalogBookId = "";
     let currentCatalogResults = [];
     let catalogSearchTimer;
     let catalogRequestId = 0;
@@ -1789,11 +1772,11 @@
         showToast("Supabaseの本棚を読めませんでした");
         return;
       }
-      if (data?.length) {
-        books.splice(0, books.length, ...data.map(rowToBook));
-        renderBooks(document.querySelector("#libraryFilters button.active")?.dataset.filter || "all");
-        showToast("Supabaseの本棚を読み込みました");
-      }
+      books.splice(0, books.length, ...(data || []).map(rowToBook));
+      renderBooks(document.querySelector("#libraryFilters button.active")?.dataset.filter || "all");
+      renderDashboard();
+      renderReviewBookOptions();
+      showToast(data?.length ? "Supabaseの本棚を読み込みました" : "Supabaseの本棚は空です");
     }
 
     async function saveBookToSupabase(book) {
@@ -1836,6 +1819,15 @@
         const haystack = `${book.title} ${book.author} ${book.genre || ""} ${statusLabel[book.status]}`.toLowerCase();
         return matchesFilter && haystack.includes(query);
       });
+      if (!visible.length) {
+        document.querySelector("#bookGrid").innerHTML = `
+          <div class="empty-state" style="grid-column:1 / -1;">
+            <strong>本棚はまだ空です</strong>
+            本を追加すると、ステータス別の本棚とダッシュボードに反映されます。
+          </div>
+        `;
+        return;
+      }
       document.querySelector("#bookGrid").innerHTML = visible.map((book) => `
         <article class="book-card">
           <img class="cover" src="${book.cover}" alt="${book.title}の表紙">
@@ -2118,14 +2110,14 @@
       const results = mergeCatalogResults(localResults, remoteResults).slice(0, 24);
       currentCatalogResults = results;
 
-      document.querySelector("#catalogCount").textContent = `${results.length}件表示（ローカル${localResults.length}件 / 外部${remoteResults.length}件）`;
+      document.querySelector("#catalogCount").textContent = `${results.length}件表示（外部${remoteResults.length}件）`;
       document.querySelector("#catalogSourceLabel").textContent = remoteResults.length
         ? "NDLサーチ / Open Library / openBDから取得"
         : catalogRemoteError
-          ? `${catalogRemoteError}。ローカルDBを表示`
+          ? `${catalogRemoteError}。候補を取得できません`
           : query.length >= 2
-            ? "外部APIを検索しましたが外部0件。ローカルDBを表示"
-            : "ローカルDBを表示";
+            ? "外部APIを検索しましたが候補0件"
+            : "タイトルかISBNを入力してください";
       document.querySelector("#catalogList").innerHTML = results.map((book) => `
         <button class="catalog-card ${book.id === selectedCatalogBookId ? "selected" : ""}" type="button" data-book-id="${book.id}">
           <img src="${book.cover}" alt="${book.title}の表紙">
@@ -2155,6 +2147,15 @@
     }
 
     function renderFeed() {
+      if (!posts.length) {
+        document.querySelector("#feedList").innerHTML = `
+          <div class="empty-state">
+            <strong>フィードはまだ空です</strong>
+            フォローや読書記録が増えたら、感想の共有がここに表示されます。
+          </div>
+        `;
+        return;
+      }
       document.querySelector("#feedList").innerHTML = posts.map((post) => `
         <article class="post">
           <div class="post-head">
@@ -2175,43 +2176,84 @@
       `).join("");
     }
 
-    function cumulativeValues(key) {
+    function renderReviewBookOptions() {
+      const select = document.querySelector("#reviewForm [name='book']");
+      const current = select.value;
+      select.innerHTML = books.length
+        ? books.map((book) => `<option value="${book.id}">${book.title}</option>`).join("")
+        : `<option value="">本を選択</option>`;
+      if (books.some((book) => book.id === current)) select.value = current;
+      const selected = books.find((book) => book.id === select.value);
+      document.querySelector("#reviewCover").src = selected?.cover || document.querySelector("#reviewCover").src;
+    }
+
+    function syncReviewCover() {
+      const select = document.querySelector("#reviewForm [name='book']");
+      const selected = books.find((book) => book.id === select.value);
+      if (selected?.cover) document.querySelector("#reviewCover").src = selected.cover;
+    }
+
+    function currentMonthlyData() {
+      if (monthData.length) return monthData;
+      const doneCount = books.filter((book) => book.status === "done").length;
+      const reviewedCount = books.filter((book) => book.rating && book.rating !== "未評価").length;
+      return doneCount ? [{ month: "現在", books: doneCount, pages: 0, reviews: reviewedCount }] : [];
+    }
+
+    function currentGenreData() {
+      const counts = new Map();
+      books.forEach((book) => counts.set(book.genre || "未分類", (counts.get(book.genre || "未分類") || 0) + 1));
+      const total = books.length;
+      const colors = ["var(--sage-strong)", "var(--coral)", "var(--gold)", "var(--plum)", "#5b6f95"];
+      return Array.from(counts.entries()).slice(0, 5).map(([label, count], index) => ({
+        label,
+        count,
+        value: total ? Math.round((count / total) * 100) : 0,
+        color: colors[index % colors.length]
+      }));
+    }
+
+    function cumulativeValues(data, key) {
       let total = 0;
-      return monthData.map((item) => {
+      return data.map((item) => {
         total += item[key];
         return total;
       });
     }
 
     function chartPath(values, width, height, padding) {
-      const max = Math.max(...values);
+      const max = Math.max(...values, 1);
       return values.map((value, index) => {
-        const x = padding.left + (index / (values.length - 1)) * (width - padding.left - padding.right);
+        const x = padding.left + (values.length === 1 ? 0.5 : index / (values.length - 1)) * (width - padding.left - padding.right);
         const y = padding.top + (1 - value / max) * (height - padding.top - padding.bottom);
         return `${index === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
       }).join(" ");
     }
 
-    function renderTrendChart() {
+    function renderTrendChart(data) {
+      if (!data.length) {
+        document.querySelector("#trendChart").innerHTML = `<text x="360" y="126" text-anchor="middle">読了データはまだありません</text>`;
+        return;
+      }
       const width = 720;
       const height = 250;
       const padding = { top: 24, right: 28, bottom: 34, left: 44 };
-      const bookTotals = cumulativeValues("books");
-      const pageTotals = cumulativeValues("pages");
+      const bookTotals = cumulativeValues(data, "books");
+      const pageTotals = cumulativeValues(data, "pages");
       const bookPath = chartPath(bookTotals, width, height, padding);
       const pagePath = chartPath(pageTotals, width, height, padding);
       const areaPath = `${bookPath} L ${width - padding.right} ${height - padding.bottom} L ${padding.left} ${height - padding.bottom} Z`;
-      const maxBooks = Math.max(...bookTotals);
+      const maxBooks = Math.max(...bookTotals, 1);
       const gridLines = [0.25, 0.5, 0.75].map((ratio) => {
         const y = padding.top + ratio * (height - padding.top - padding.bottom);
         return `<line class="grid-line" x1="${padding.left}" x2="${width - padding.right}" y1="${y}" y2="${y}"></line>`;
       }).join("");
-      const labels = monthData.map((item, index) => {
-        const x = padding.left + (index / (monthData.length - 1)) * (width - padding.left - padding.right);
+      const labels = data.map((item, index) => {
+        const x = padding.left + (data.length === 1 ? 0.5 : index / (data.length - 1)) * (width - padding.left - padding.right);
         return `<text x="${x}" y="${height - 10}" text-anchor="middle">${item.month}</text>`;
       }).join("");
       const points = bookTotals.map((value, index) => {
-        const x = padding.left + (index / (bookTotals.length - 1)) * (width - padding.left - padding.right);
+        const x = padding.left + (bookTotals.length === 1 ? 0.5 : index / (bookTotals.length - 1)) * (width - padding.left - padding.right);
         const y = padding.top + (1 - value / maxBooks) * (height - padding.top - padding.bottom);
         return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="var(--panel)" stroke="var(--sage-strong)" stroke-width="3"></circle>`;
       }).join("");
@@ -2226,22 +2268,36 @@
     }
 
     function renderDashboard() {
-      const totalBooks = monthData.reduce((sum, item) => sum + item.books, 0);
-      const totalPages = monthData.reduce((sum, item) => sum + item.pages, 0);
-      const totalReviews = monthData.reduce((sum, item) => sum + item.reviews, 0);
-      const latest = monthData.at(-1);
-      const previous = monthData.at(-2);
-      const goal = 120;
-      const goalRate = Math.min(100, Math.round((totalBooks / goal) * 100));
-      const reviewRate = Math.round((totalReviews / totalBooks) * 100);
+      const data = currentMonthlyData();
+      const genreData = currentGenreData();
+      const doneBooks = books.filter((book) => book.status === "done").length;
+      const readingBooks = books.filter((book) => book.status === "reading").length;
+      const wantBooks = books.filter((book) => book.status === "want").length;
+      const totalBooks = data.reduce((sum, item) => sum + item.books, 0);
+      const totalPages = data.reduce((sum, item) => sum + item.pages, 0);
+      const totalReviews = data.reduce((sum, item) => sum + item.reviews, 0);
+      const latest = data.at(-1) || { books: 0, pages: 0, reviews: 0 };
+      const previous = data.at(-2) || { books: 0, pages: 0, reviews: 0 };
+      const goal = 45;
+      const goalRate = Math.min(100, Math.round((doneBooks / goal) * 100));
+      const reviewRate = totalBooks ? Math.round((totalReviews / totalBooks) * 100) : 0;
       const bookDelta = latest.books - previous.books;
       const pageDelta = latest.pages - previous.pages;
 
+      document.querySelector("#heroDoneCount").textContent = doneBooks;
+      document.querySelector("#heroReadingCount").textContent = readingBooks;
+      document.querySelector("#heroWantCount").textContent = wantBooks;
+      document.querySelector("#sidebarGoalValue").innerHTML = `${doneBooks}/${goal}<span>冊達成</span>`;
+      document.querySelector(".goal-ring").style.background = `conic-gradient(var(--sage-strong) 0 ${goalRate}%, #e3e7df ${goalRate}% 100%)`;
+      document.querySelector("#sidebarGoalText").textContent = doneBooks
+        ? `年間目標まであと${Math.max(0, goal - doneBooks)}冊。`
+        : "読書記録を追加すると、ここに目標進捗が出ます。";
+
       document.querySelector("#kpiGrid").innerHTML = [
-        ["累積読了", `${totalBooks}冊`, `今月 ${latest.books}冊`],
-        ["累積ページ", `${totalPages.toLocaleString()}p`, `${pageDelta >= 0 ? "+" : ""}${pageDelta.toLocaleString()}p`],
+        ["本棚登録", `${books.length}冊`, "現在の登録数"],
+        ["読了", `${doneBooks}冊`, `${bookDelta >= 0 ? "+" : ""}${bookDelta}冊`],
         ["レビュー率", `${reviewRate}%`, `${totalReviews}件を記録`],
-        ["平均ペース", `${Math.round(totalBooks / monthData.length)}冊/月`, `${bookDelta >= 0 ? "+" : ""}${bookDelta}冊`]
+        ["累積ページ", `${totalPages.toLocaleString()}p`, `${pageDelta >= 0 ? "+" : ""}${pageDelta.toLocaleString()}p`]
       ].map(([label, value, delta]) => `
         <div class="kpi">
           <span>${label}</span>
@@ -2252,13 +2308,15 @@
 
       document.querySelector("#progressRing").style.setProperty("--progress", `${goalRate}%`);
       document.querySelector("#progressPercent").textContent = `${goalRate}%`;
-      document.querySelector("#progressText").textContent = `${totalBooks}/${goal}冊`;
-      document.querySelector("#progressDetail").textContent = `年間目標まであと${Math.max(0, goal - totalBooks)}冊。直近ペースなら約${Math.max(1, Math.ceil((goal - totalBooks) / Math.max(1, latest.books)))}か月で到達。`;
+      document.querySelector("#progressText").textContent = `${doneBooks}/${goal}冊`;
+      document.querySelector("#progressDetail").textContent = doneBooks
+        ? `年間目標まであと${Math.max(0, goal - doneBooks)}冊。`
+        : "読了にした本が増えると、目標進捗が動きます。";
 
       const paceItems = [
-        ["読了冊数", latest.books, 20, `${latest.books}冊`],
-        ["読了ページ", latest.pages, 6000, `${latest.pages.toLocaleString()}p`],
-        ["レビュー率", Math.round((latest.reviews / latest.books) * 100), 100, `${Math.round((latest.reviews / latest.books) * 100)}%`]
+        ["読了冊数", latest.books, Math.max(1, goal), `${latest.books}冊`],
+        ["読了ページ", latest.pages, Math.max(1, latest.pages || 1), `${latest.pages.toLocaleString()}p`],
+        ["レビュー率", reviewRate, 100, `${reviewRate}%`]
       ];
       document.querySelector("#paceList").innerHTML = paceItems.map(([label, value, max, display]) => `
         <div class="pace-row">
@@ -2267,19 +2325,34 @@
         </div>
       `).join("");
 
-      document.querySelector("#genreLegend").innerHTML = genreData.map((item) => `
-        <span><b><i style="background:${item.color}"></i>${item.label}</b><strong>${item.value}%</strong></span>
-      `).join("");
+      document.querySelector("#genreDonutTotal").textContent = `${books.length}冊`;
+      if (genreData.length) {
+        let start = 0;
+        const stops = genreData.map((item) => {
+          const end = start + item.value;
+          const stop = `${item.color} ${start}% ${end}%`;
+          start = end;
+          return stop;
+        }).join(", ");
+        document.querySelector("#genreDonut").style.background = `conic-gradient(${stops})`;
+        document.querySelector("#genreLegend").innerHTML = genreData.map((item) => `
+          <span><b><i style="background:${item.color}"></i>${item.label}</b><strong>${item.value}%</strong></span>
+        `).join("");
+      } else {
+        document.querySelector("#genreDonut").style.background = "#e3e7df";
+        document.querySelector("#genreLegend").innerHTML = `<div class="empty-state"><strong>ジャンル未集計</strong>本を追加すると配分が出ます。</div>`;
+      }
 
-      document.querySelector("#milestoneList").innerHTML = [
-        ["100冊突破", "年間ログが十分に比較できる量になりました"],
-        ["レビュー率80%超", "読んだだけで終わらず、感想が蓄積されています"],
-        ["6月は最高ページ数", "深い本を読み切る月になっています"]
-      ].map(([title, detail]) => `
-        <div class="milestone"><strong>${title}</strong><span>${detail}</span></div>
-      `).join("");
+      const milestones = [
+        doneBooks >= 1 && ["初回読了", "最初の読了記録ができました"],
+        books.length >= 5 && ["本棚5冊", "読みたい本と読んだ本が並び始めました"],
+        reviewRate >= 80 && totalReviews >= 1 && ["レビュー率80%超", "読んだだけで終わらず感想も残せています"]
+      ].filter(Boolean);
+      document.querySelector("#milestoneList").innerHTML = milestones.length
+        ? milestones.map(([title, detail]) => `<div class="milestone"><strong>${title}</strong><span>${detail}</span></div>`).join("")
+        : `<div class="empty-state"><strong>達成ハイライトはまだありません</strong>読了やレビューが増えると、節目がここに表示されます。</div>`;
 
-      renderTrendChart();
+      renderTrendChart(data);
     }
 
     function splitFirstSentence(text) {
@@ -2297,7 +2370,7 @@
       const form = document.querySelector("#reviewForm");
       const data = new FormData(form);
       return {
-        book: data.get("book"),
+        book: books.find((book) => book.id === data.get("book"))?.title || "",
         rating: data.get("rating"),
         mood: data.get("mood"),
         review: data.get("review"),
@@ -2307,19 +2380,23 @@
 
     function buildTweet(mode = tweetMode) {
       const data = getReviewData();
+      if (!data.book || !data.review.trim()) {
+        return "本と感想を入力すると、X投稿文のプレビューがここに表示されます。";
+      }
       const reviewLead = splitFirstSentence(data.review);
       const changeLead = splitFirstSentence(data.change);
+      const changeSentence = changeLead ? `\n読後は、${trimEnding(changeLead)}。` : "";
       const hashtags = "#読書記録 #読了";
 
       if (mode === "deep") {
-        return `『${data.book}』を読了。\n\n${reviewLead}\n読後は、${trimEnding(changeLead)}。\n\n読む前より少し、${data.mood}感覚が残った。\n\n${hashtags}`;
+        return `『${data.book}』を読了。\n\n${reviewLead}${changeSentence}\n\n読む前より少し、${data.mood}感覚が残った。\n\n${hashtags}`;
       }
 
       if (mode === "recommend") {
         return `『${data.book}』を読了。\n\n${data.mood}本だった。\n${reviewLead}\n\n自分の考え方や日々の選び方を見直したい人におすすめ。\n\n#読書記録`;
       }
 
-      return `『${data.book}』を読了。\n\n${reviewLead}\n\n読後、${trimEnding(changeLead)}。\n\n#読書記録`;
+      return `『${data.book}』を読了。\n\n${reviewLead}${changeSentence ? `\n${changeSentence}` : ""}\n\n#読書記録`;
     }
 
     function updateTweetPreview() {
@@ -2436,7 +2513,10 @@
 
     document.querySelectorAll("#reviewForm select, #reviewForm textarea").forEach((field) => {
       field.addEventListener("input", updateTweetPreview);
-      field.addEventListener("change", updateTweetPreview);
+      field.addEventListener("change", () => {
+        if (field.name === "book") syncReviewCover();
+        updateTweetPreview();
+      });
     });
 
     document.querySelectorAll("#tweetModes button").forEach((button) => {
@@ -2498,6 +2578,10 @@
       event.preventDefault();
       const data = new FormData(event.currentTarget);
       const selected = currentCatalogResults.find((item) => item.id === selectedCatalogBookId) || bookDatabase.find((item) => item.id === selectedCatalogBookId);
+      if (!String(data.get("title") || "").trim()) {
+        showToast("タイトルを入力してください");
+        return;
+      }
       const newBook = {
         id: selected?.id || crypto.randomUUID(),
         title: data.get("title"),
@@ -2514,6 +2598,8 @@
       const savedBook = await saveBookToSupabase(newBook);
       books.unshift(savedBook);
       renderBooks();
+      renderDashboard();
+      renderReviewBookOptions();
       modal.classList.remove("active");
       modal.setAttribute("aria-hidden", "true");
       if (!currentSession) showToast("本棚に追加しました");
@@ -2522,6 +2608,7 @@
     renderBooks();
     renderFeed();
     renderDashboard();
+    renderReviewBookOptions();
     updateTweetPreview();
     initSupabaseAuth();
   </script>
