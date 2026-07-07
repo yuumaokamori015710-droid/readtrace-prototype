@@ -501,6 +501,27 @@
       line-height: 1.6;
     }
 
+    .goal-form {
+      margin-top: 12px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: end;
+    }
+
+    .goal-form label {
+      font-size: 12px;
+    }
+
+    .goal-form input {
+      min-height: 38px;
+    }
+
+    .goal-form button {
+      min-height: 38px;
+      padding: 0 12px;
+    }
+
     .pace-list,
     .milestone-list {
       display: grid;
@@ -1176,11 +1197,11 @@
       </nav>
 
       <section class="reading-goal">
-        <h3>2026 読書目標</h3>
+        <h3>今月の読書目標</h3>
         <div class="goal-ring">
-          <div id="sidebarGoalValue">0/45<span>冊達成</span></div>
+          <div id="sidebarGoalValue">0/5<span>今月の目標</span></div>
         </div>
-        <p id="sidebarGoalText" style="margin:0;color:var(--muted);font-size:13px;line-height:1.55;">読書記録を追加すると、ここに目標進捗が出ます。</p>
+        <p id="sidebarGoalText" style="margin:0;color:var(--muted);font-size:13px;line-height:1.55;">月間目標を決めて、読了を積み上げられます。</p>
       </section>
     </aside>
 
@@ -1241,8 +1262,14 @@
                 <div><strong id="progressPercent">0%</strong><span>目標達成</span></div>
               </div>
               <div class="progress-copy">
-                <strong id="progressText">0/45冊</strong>
-                <p id="progressDetail">年間目標に対する進捗を表示します。</p>
+                <strong id="progressText">0/5冊</strong>
+                <p id="progressDetail">月間目標に対する進捗を表示します。</p>
+                <form class="goal-form" id="goalForm">
+                  <label>月間目標
+                    <input id="monthlyGoalInput" name="monthlyGoal" type="number" min="1" max="99" step="1" value="5">
+                  </label>
+                  <button class="ghost" type="submit">保存</button>
+                </form>
               </div>
             </section>
 
@@ -1675,12 +1702,24 @@
     let supabaseClientKey = "";
     let currentSession = null;
     const SUPABASE_CONFIG_KEY = "readtrace:supabase-config";
+    const MONTHLY_GOAL_KEY = "readtrace:monthly-goal";
 
     function showToast(message) {
       const toast = document.querySelector("#toast");
       toast.textContent = message;
       toast.classList.add("active");
       window.setTimeout(() => toast.classList.remove("active"), 1800);
+    }
+
+    function readMonthlyGoal() {
+      const value = Number(localStorage.getItem(MONTHLY_GOAL_KEY) || "5");
+      return Number.isFinite(value) && value > 0 ? Math.min(99, Math.round(value)) : 5;
+    }
+
+    function saveMonthlyGoal(value) {
+      const goal = Math.max(1, Math.min(99, Math.round(Number(value) || 5)));
+      localStorage.setItem(MONTHLY_GOAL_KEY, String(goal));
+      return goal;
     }
 
     function readSupabaseConfig() {
@@ -2278,8 +2317,9 @@
       const totalReviews = data.reduce((sum, item) => sum + item.reviews, 0);
       const latest = data.at(-1) || { books: 0, pages: 0, reviews: 0 };
       const previous = data.at(-2) || { books: 0, pages: 0, reviews: 0 };
-      const goal = 45;
-      const goalRate = Math.min(100, Math.round((doneBooks / goal) * 100));
+      const goal = readMonthlyGoal();
+      const currentMonthDone = latest.books;
+      const goalRate = Math.min(100, Math.round((currentMonthDone / goal) * 100));
       const reviewRate = totalBooks ? Math.round((totalReviews / totalBooks) * 100) : 0;
       const bookDelta = latest.books - previous.books;
       const pageDelta = latest.pages - previous.pages;
@@ -2287,11 +2327,12 @@
       document.querySelector("#heroDoneCount").textContent = doneBooks;
       document.querySelector("#heroReadingCount").textContent = readingBooks;
       document.querySelector("#heroWantCount").textContent = wantBooks;
-      document.querySelector("#sidebarGoalValue").innerHTML = `${doneBooks}/${goal}<span>冊達成</span>`;
+      document.querySelector("#monthlyGoalInput").value = goal;
+      document.querySelector("#sidebarGoalValue").innerHTML = `${currentMonthDone}/${goal}<span>今月の目標</span>`;
       document.querySelector(".goal-ring").style.background = `conic-gradient(var(--sage-strong) 0 ${goalRate}%, #e3e7df ${goalRate}% 100%)`;
-      document.querySelector("#sidebarGoalText").textContent = doneBooks
-        ? `年間目標まであと${Math.max(0, goal - doneBooks)}冊。`
-        : "読書記録を追加すると、ここに目標進捗が出ます。";
+      document.querySelector("#sidebarGoalText").textContent = currentMonthDone
+        ? `今月の目標まであと${Math.max(0, goal - currentMonthDone)}冊。`
+        : "月間目標を決めて、読了を積み上げられます。";
 
       document.querySelector("#kpiGrid").innerHTML = [
         ["本棚登録", `${books.length}冊`, "現在の登録数"],
@@ -2308,10 +2349,10 @@
 
       document.querySelector("#progressRing").style.setProperty("--progress", `${goalRate}%`);
       document.querySelector("#progressPercent").textContent = `${goalRate}%`;
-      document.querySelector("#progressText").textContent = `${doneBooks}/${goal}冊`;
-      document.querySelector("#progressDetail").textContent = doneBooks
-        ? `年間目標まであと${Math.max(0, goal - doneBooks)}冊。`
-        : "読了にした本が増えると、目標進捗が動きます。";
+      document.querySelector("#progressText").textContent = `${currentMonthDone}/${goal}冊`;
+      document.querySelector("#progressDetail").textContent = currentMonthDone
+        ? `今月の目標まであと${Math.max(0, goal - currentMonthDone)}冊。`
+        : "読了にした本が増えると、月間目標の進捗が動きます。";
 
       const paceItems = [
         ["読了冊数", latest.books, Math.max(1, goal), `${latest.books}冊`],
@@ -2438,6 +2479,14 @@
 
     document.querySelector("#notifyBtn").addEventListener("click", () => showToast("新しいコメントが3件あります"));
     document.querySelector("#saveDraft").addEventListener("click", () => showToast("下書きを保存しました"));
+
+    document.querySelector("#goalForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const goal = saveMonthlyGoal(document.querySelector("#monthlyGoalInput").value);
+      document.querySelector("#monthlyGoalInput").value = goal;
+      renderDashboard();
+      showToast("月間目標を保存しました");
+    });
 
     const authModal = document.querySelector("#authModal");
     document.querySelector("#authButton").addEventListener("click", () => {
