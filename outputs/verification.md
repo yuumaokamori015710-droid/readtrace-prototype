@@ -43,3 +43,11 @@ The preceding checks describe the original mock. Google OAuth integration has no
 - Inspected the new login screen at 390px; no horizontal overflow. Inspected the header and new icons on desktop and the shelf at 320px. Fixed a narrow movie-tab label wrap; repeat measurement showed 42px tabs without internal overflow. Temporary viewport settings were reset.
 - Actual Google consent, successful Google login, real token refresh, cross-tab real-session logout, and real-account reload persistence have NOT been verified. They require completion of Google/Supabase provider settings and an owner login.
 - Shelves and social functions remain a browser-storage mock. Real Auth does not yet provide cloud record storage, RLS, cross-device synchronization, or sharing between real Google accounts. See `readtrace-auth-setup.md`.
+
+## Official Google Button Update
+
+- Replaced the generic sign-in arrow with Google's unmodified standard-color G logo from the official Google Identity branding page. Both the login page and demo account menu use the same Japanese `Google でログイン` button.
+- Button structure and light-theme states derive from Google's official HTML configurator. Google Sans for the Latin label is bundled with its OFL license; Japanese glyphs use the system UI font. This is an HTML button connected to Supabase OAuth, not a GIS SDK-rendered button.
+- Local browser checks at desktop 1280px and mobile 320px: white background, `#747775` border, loaded 200px source logo displayed at 20x20px, 44px touch target, and no document or label overflow. The viewport override was reset.
+- The account-menu Google button reaches the existing sign-in handler. While provider setup remains incomplete, it shows the preparation notice rather than navigating to a broken OAuth endpoint.
+- All 28 existing tests still pass. Authentication configuration, Google enablement and real-login verification are unchanged and remain pending owner setup.
