@@ -37,10 +37,10 @@ export function validateRecord(record) {
     return "公開範囲を選んでください。";
   return "";
 }
-export function createStore(storage) {
+export function createStore(storage, { key = STORAGE_KEY, seed = seedData } = {}) {
   let data;
   try {
-    const saved = JSON.parse(storage.getItem(STORAGE_KEY));
+    const saved = JSON.parse(storage.getItem(key));
     if (
       saved?.version === 2 &&
       Array.isArray(saved.users) &&
@@ -48,8 +48,8 @@ export function createStore(storage) {
     )
       data = saved;
   } catch {}
-  data ||= seedData();
-  const persist = () => storage.setItem(STORAGE_KEY, JSON.stringify(data));
+  data ||= seed();
+  const persist = () => storage.setItem(key, JSON.stringify(data));
   const visible = (viewer, owner) =>
     data.records.filter(
       (r) => visibleTo(r, viewer) && (!owner || r.userId === owner),

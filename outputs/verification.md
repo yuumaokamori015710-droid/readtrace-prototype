@@ -30,3 +30,16 @@ Test-only records and comments were deleted through the UI. One additional empty
 ## Scope
 
 The access rules are client-side simulation. All users and records exist in the browser's localStorage, not a secure server. Sharing opens a route and requires a demo session, but does not synchronize edited records across devices or origins. Image failures use a built-in fallback. No real authentication, paid APIs, cross-device synchronization or production security audit was performed.
+
+## Google Auth Integration Update (2026-11-05)
+
+The preceding checks describe the original mock. Google OAuth integration has now been added, but is not enabled for users yet.
+
+- Created a dedicated Tokyo-region `readtrace` Supabase project, after the user's organization choice and a USD 0/month quote. No existing app project was modified.
+- Verified the new project's public Auth settings report `external.google: false`. Google credentials and redirect allowlist still need owner setup; `googleEnabled: false` prevents an invalid outbound sign-in.
+- `npm test`: 28 tests pass, including 14 auth tests using a substituted SDK. These cover PKCE configuration, a single code exchange, server user verification, safe internal return paths, query/fragment error cleanup, expired-code rejection, no acceptance of implicit tokens, logout, and isolated per-Google-user local shelves.
+- Real browser: the local SDK loads without console errors. The Google button while setup is incomplete shows the preparation notice without leaving the app. Demo login/logout and switching still work.
+- Opened a shared completion list while logged out, selected a different demo user, and verified the exact shared hash route and public list are preserved. This is a demo-flow check, not a successful Google OAuth check.
+- Inspected the new login screen at 390px; no horizontal overflow. Inspected the header and new icons on desktop and the shelf at 320px. Fixed a narrow movie-tab label wrap; repeat measurement showed 42px tabs without internal overflow. Temporary viewport settings were reset.
+- Actual Google consent, successful Google login, real token refresh, cross-tab real-session logout, and real-account reload persistence have NOT been verified. They require completion of Google/Supabase provider settings and an owner login.
+- Shelves and social functions remain a browser-storage mock. Real Auth does not yet provide cloud record storage, RLS, cross-device synchronization, or sharing between real Google accounts. See `readtrace-auth-setup.md`.

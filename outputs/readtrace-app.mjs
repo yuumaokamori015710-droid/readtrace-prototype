@@ -6,13 +6,16 @@ import {
   socialRecord,
 } from "./readtrace-store.mjs";
 import { createCoverOrbit } from "./readtrace-orbit.mjs";
+import { authConfig } from "./readtrace-config.mjs";
+import { createAuth, emptyAccountData } from "./readtrace-auth.mjs";
 
 const app = document.querySelector("#app");
 const modal = document.querySelector("#modal");
-const store = createStore(localStorage);
-store.persist();
-let viewer = localStorage.getItem(SESSION_KEY) || "";
-if (!store.data.users.some((u) => u.id === viewer)) viewer = "";
+const demoStore = createStore(localStorage);
+demoStore.persist();
+let store = demoStore;
+let viewer = "";
+let authState = { ready: false, configured: false, user: null, busy: false, error: "" };
 let view = { type: "book", filter: "all", query: "", sort: "added" };
 let searchType = "book",
   searchQuery = "",
@@ -32,7 +35,9 @@ const esc = (value) =>
         c
       ],
   );
-const icon = (name) => `<i data-lucide="${name}" aria-hidden="true"></i>`;
+const icon = (name) => ["book-open", "clapperboard"].includes(name)
+  ? '<img class="media-mark" src="./assets/readtrace-mark.png" alt="" aria-hidden="true" width="27" height="20">'
+  : `<i data-lucide="${name}" aria-hidden="true"></i>`;
 const user = (id) => store.data.users.find((u) => u.id === id);
 const mine = () => user(viewer);
 const route = () => location.hash.slice(1) || "/shelf";
@@ -69,6 +74,9 @@ function navigate(path) {
   else location.hash = path;
 }
 function setSession(id) {
+  if (authState.user) return;
+  if (id && !demoStore.data.users.some((u) => u.id === id)) return;
+  store = demoStore;
   viewer = id;
   id
     ? localStorage.setItem(SESSION_KEY, id)
@@ -155,7 +163,7 @@ modal.addEventListener("click", (event) => {
 
 function authScreen() {
   const returning = route() !== "/shelf";
-  app.innerHTML = `<main class="auth-page" id="main"><section class="auth-art"><a class="brand" href="#/shelf">${icon("book-open")}ReadTrace</a><h1>本と映画、そのあとに<br>残るもの。</h1><p>読みたい一冊も、忘れたくない一本も。<br>自分だけの棚に、少しずつ。</p><div class="auth-covers">${cover(catalog[2])}${cover(catalog[32])}${cover(catalog[0])}</div></section><section class="auth-form"><span class="demo-label">DEMO</span><h2>${authMode === "login" ? "おかえりなさい" : "はじめての棚をつくる"}</h2><p>デモ用ログインです。パスワードは不要です。</p>${returning ? '<p class="auth-return">ログイン後に、開こうとしたページへ戻ります。</p>' : ""}${authMode === "login" ? `<div class="demo-users">${store.data.users.map((u) => `<button class="demo-user" data-action="login" data-id="${u.id}">${avatar(u)}<span><strong>${esc(u.name)}</strong><small>${u.id === "shiori" ? "本と映画のある暮らし" : u.id === "haru" ? "小説と喫茶店" : u.id === "kenta" ? "週末は映画館へ" : "自分だけの新しい棚"}</small></span>${icon("arrow-right")}</button>`).join("")}</div><div class="row between"><span class="muted">初めての方は</span>${action("auth-register", "新規登録 " + icon("arrow-right"), "", "text-btn")}</div>` : `<form id="register-form" class="register-form" novalidate><label>表示名 <span class="muted">必須</span><input name="name" required maxlength="30" autocomplete="nickname" placeholder="あなたの名前"></label><div id="register-error" class="error" role="alert"></div><button class="btn primary" type="submit">棚をつくって始める ${icon("arrow-right")}</button>${action("auth-login", "デモユーザーでログイン", "", "text-btn")}</form>`}<p class="auth-note">データはこのブラウザに保存されます。実際のアカウント登録やパスワードの入力はありません。</p></section></main>`;
+  app.innerHTML = `<main class="auth-page" id="main"><section class="auth-art"><a class="brand" href="#/shelf">${icon("book-open")}ReadTrace</a><h1>本と映画、そのあとに<br>残るもの。</h1><p>読みたい一冊も、忘れたくない一本も。<br>自分だけの棚に、少しずつ。</p><div class="auth-covers">${cover(catalog[2])}${cover(catalog[32])}${cover(catalog[0])}</div></section><section class="auth-form"><span class="eyebrow">YOUR READING & CINEMA</span><h2>あなたの棚へ</h2><p>初めての方も、Googleアカウントで始められます。</p>${returning ? '<p class="auth-return">ログイン後に、開こうとしたページへ戻ります。</p>' : ""}${action("google-login", icon("log-in") + (authState.busy ? "Googleへ移動しています…" : "Googleで続ける"), authState.busy ? 'disabled aria-busy="true"' : "", "btn google-login")}<div id="auth-error" class="error" role="alert">${esc(authState.error)}</div>${!authState.configured ? '<p class="auth-note">Googleログインは接続設定の準備中です。</p>' : ""}<p class="auth-note">Googleのパスワードを、このアプリに入力する必要はありません。記録は現在、このブラウザ内に保存されます。</p><details class="demo-options" ${authMode === "register" ? "open" : ""}><summary>デモを試す</summary><span class="demo-label">DEMO / パスワード不要</span>${authMode === "login" ? `<div class="demo-users">${demoStore.data.users.map((u) => `<button class="demo-user" data-action="login" data-id="${u.id}">${avatar(u)}<span><strong>${esc(u.name)}</strong><small>このブラウザだけのデモユーザー</small></span>${icon("arrow-right")}</button>`).join("")}</div>${action("auth-register", "デモ用の棚をつくる " + icon("arrow-right"), "", "text-btn")}` : `<form id="register-form" class="register-form" novalidate><label>デモの表示名 <span class="muted">必須</span><input name="name" required maxlength="30" autocomplete="nickname" placeholder="あなたの名前"></label><div id="register-error" class="error" role="alert"></div><button class="btn primary" type="submit">デモを始める ${icon("arrow-right")}</button>${action("auth-login", "デモユーザーを選ぶ", "", "text-btn")}</form>`}</details></section></main>`;
 }
 function navItem(path, title, glyph) {
   return `<a href="#${path}" class="${route().startsWith(path) ? "active" : ""}" ${route().startsWith(path) ? 'aria-current="page"' : ""}>${icon(glyph)}<span>${title}</span></a>`;
@@ -464,6 +472,10 @@ function render() {
   const mediaRoute = route().split('/');
   const activeRecord = mediaRoute[1] === 'record' ? store.get(mediaRoute[2], viewer) : null;
   document.documentElement.dataset.media = activeRecord?.work.type || (mediaRoute[1] === 'share' ? mediaRoute[3] : view.type);
+  if (!authState.ready) {
+    app.innerHTML = '<main id="main" class="auth-loading" role="status">ログイン状態を確認しています…</main>';
+    return;
+  }
   if (!viewer) {
     authScreen();
     icons();
@@ -580,6 +592,10 @@ function selectWork(work) {
   } else openEditor(work);
 }
 function openAccount() {
+  if (authState.user) {
+    showModal("アカウント", `<div class="row account-identity">${avatar(mine())}<div><strong>${esc(mine().name)}</strong><p class="muted">Googleアカウントでログイン中</p></div></div><div class="stack"><a class="btn" data-close href="#/user/${viewer}">${icon("user-round")}プロフィールを見る</a>${action("goal", icon("chart-no-axes-combined") + "読書目標と実績")}${action("logout", icon("log-out") + "ログアウト")}<p class="field-hint">本人確認はSupabase Authを利用しています。棚・感想・公開範囲はまだブラウザ保存のモックです。端末間の同期や、サーバーでの記録のアクセス制御は未実装です。</p></div>`);
+    return;
+  }
   showModal(
     "アカウント",
     `<div class="row" style="margin-bottom:18px">${avatar(mine())}<div><strong>${esc(mine().name)}</strong><p class="muted">デモアカウント</p></div></div><div class="stack"><a class="btn" data-close href="#/user/${viewer}">${icon("user-round")}プロフィールを見る</a>${action("goal", icon("chart-no-axes-combined") + "読書目標と実績")}<hr style="border:0;border-top:1px solid var(--line);width:100%;margin:0"><h3>デモユーザーを切り替える</h3><div class="stack" style="gap:7px">${store.data.users
@@ -590,7 +606,7 @@ function openAccount() {
       )
       .join(
         "",
-      )}</div>${action("logout", icon("log-out") + "ログアウト")}<p class="field-hint">公開範囲はモック上の表示制御です。本番の認証・アクセス制御ではありません。データはこのブラウザ内にのみ保存されます。</p></div>`,
+      )}</div>${action("google-login", icon("log-in") + "Googleアカウントでログイン")}${action("logout", icon("log-out") + "ログアウト")}<p class="field-hint">公開範囲はモック上の表示制御です。本番の認証・アクセス制御ではありません。データはこのブラウザ内にのみ保存されます。デモの棚はGoogleアカウントには移行されません。</p></div>`,
   );
 }
 function shareUrl(path) {
@@ -670,7 +686,7 @@ function openGoal() {
   );
 }
 
-document.addEventListener("click", (event) => {
+document.addEventListener("click", async (event) => {
   if (event.target.closest(".skip-link")) {
     event.preventDefault();
     const main = $("#main");
@@ -686,7 +702,15 @@ document.addEventListener("click", (event) => {
   try {
     if (a === "close") closeModal();
     else if (a === "login") setSession(id);
-    else if (a === "logout") setSession("");
+    else if (a === "logout") {
+      if (authState.user) await auth.signOut();
+      else setSession("");
+    }
+    else if (a === "google-login") {
+      localStorage.removeItem(SESSION_KEY);
+      if (!authState.user) setSession("");
+      await auth.signIn(route());
+    }
     else if (a === "auth-register") {
       authMode = "register";
       render();
@@ -925,4 +949,47 @@ document.addEventListener("keydown", (event) => {
     document.querySelectorAll(".tab")[next]?.focus();
   }
 });
+const auth = createAuth({
+  config: authConfig,
+  storage: sessionStorage,
+  location,
+  replaceUrl: (url) => history.replaceState(null, "", url),
+  createClient: async (...args) => {
+    if (!window.supabase) await new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = new URL("./assets/supabase-2.119.0.js", import.meta.url).href;
+      script.onload = resolve;
+      script.onerror = () => reject(new Error("network SDK load failed"));
+      document.head.append(script);
+    });
+    return window.supabase.createClient(...args);
+  },
+  onChange: (next) => {
+    const changed = next.user?.id !== authState.user?.id;
+    authState = next;
+    if (next.user && changed) {
+      store = createStore(localStorage, {
+        key: `readtrace:account:${next.user.id}:v1`,
+        seed: () => emptyAccountData(next.user),
+      });
+      const identity = emptyAccountData(next.user).users[0];
+      store.data.users = [identity, ...store.data.users.filter((u) => u.id !== identity.id)];
+      store.persist();
+      viewer = next.user.id;
+      localStorage.removeItem(SESSION_KEY);
+      revealed.clear();
+      closeModal();
+    } else if (!next.user && changed) {
+      store = demoStore;
+      viewer = "";
+      revealed.clear();
+      closeModal();
+    } else if (!next.user && next.ready && !viewer) {
+      const savedDemo = localStorage.getItem(SESSION_KEY);
+      if (demoStore.data.users.some((u) => u.id === savedDemo)) viewer = savedDemo;
+    }
+    if (changed || !viewer || !document.querySelector(".shell")) render();
+  },
+});
 render();
+void auth.init();
