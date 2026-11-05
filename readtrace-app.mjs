@@ -57,6 +57,15 @@ const isLiked = (id) =>
   store.data.likes.some(([a, b]) => a === viewer && b === id);
 const action = (name, text, extra = "", cls = "btn") =>
   `<button type="button" class="${cls}" data-action="${name}" ${name === "add" ? 'aria-label="作品を追加" title="作品を追加"' : ""} ${extra}>${text}</button>`;
+function googleLoginButton() {
+  return `<button type="button" class="gsi-material-button google-login" data-action="google-login" ${authState.busy ? 'disabled aria-busy="true"' : ""}>
+    <span class="gsi-material-button-state" aria-hidden="true"></span>
+    <span class="gsi-material-button-content-wrapper">
+      <img class="gsi-material-button-icon" src="./assets/google-g-logo.png" alt="" aria-hidden="true" width="20" height="20">
+      <span class="gsi-material-button-contents">Google でログイン</span>
+    </span>
+  </button>${authState.busy ? '<span class="google-login-status" role="status">Googleへ移動しています…</span>' : ""}`;
+}
 const avatar = (u) =>
   `<span class="avatar" style="--avatar:${u.color}" aria-hidden="true">${esc(u.initial)}</span>`;
 function icons() {
@@ -163,7 +172,7 @@ modal.addEventListener("click", (event) => {
 
 function authScreen() {
   const returning = route() !== "/shelf";
-  app.innerHTML = `<main class="auth-page" id="main"><section class="auth-art"><a class="brand" href="#/shelf">${icon("book-open")}ReadTrace</a><h1>本と映画、そのあとに<br>残るもの。</h1><p>読みたい一冊も、忘れたくない一本も。<br>自分だけの棚に、少しずつ。</p><div class="auth-covers">${cover(catalog[2])}${cover(catalog[32])}${cover(catalog[0])}</div></section><section class="auth-form"><span class="eyebrow">YOUR READING & CINEMA</span><h2>あなたの棚へ</h2><p>初めての方も、Googleアカウントで始められます。</p>${returning ? '<p class="auth-return">ログイン後に、開こうとしたページへ戻ります。</p>' : ""}${action("google-login", icon("log-in") + (authState.busy ? "Googleへ移動しています…" : "Googleで続ける"), authState.busy ? 'disabled aria-busy="true"' : "", "btn google-login")}<div id="auth-error" class="error" role="alert">${esc(authState.error)}</div>${!authState.configured ? '<p class="auth-note">Googleログインは接続設定の準備中です。</p>' : ""}<p class="auth-note">Googleのパスワードを、このアプリに入力する必要はありません。記録は現在、このブラウザ内に保存されます。</p><details class="demo-options" ${authMode === "register" ? "open" : ""}><summary>デモを試す</summary><span class="demo-label">DEMO / パスワード不要</span>${authMode === "login" ? `<div class="demo-users">${demoStore.data.users.map((u) => `<button class="demo-user" data-action="login" data-id="${u.id}">${avatar(u)}<span><strong>${esc(u.name)}</strong><small>このブラウザだけのデモユーザー</small></span>${icon("arrow-right")}</button>`).join("")}</div>${action("auth-register", "デモ用の棚をつくる " + icon("arrow-right"), "", "text-btn")}` : `<form id="register-form" class="register-form" novalidate><label>デモの表示名 <span class="muted">必須</span><input name="name" required maxlength="30" autocomplete="nickname" placeholder="あなたの名前"></label><div id="register-error" class="error" role="alert"></div><button class="btn primary" type="submit">デモを始める ${icon("arrow-right")}</button>${action("auth-login", "デモユーザーを選ぶ", "", "text-btn")}</form>`}</details></section></main>`;
+  app.innerHTML = `<main class="auth-page" id="main"><section class="auth-art"><a class="brand" href="#/shelf">${icon("book-open")}ReadTrace</a><h1>本と映画、そのあとに<br>残るもの。</h1><p>読みたい一冊も、忘れたくない一本も。<br>自分だけの棚に、少しずつ。</p><div class="auth-covers">${cover(catalog[2])}${cover(catalog[32])}${cover(catalog[0])}</div></section><section class="auth-form"><span class="eyebrow">YOUR READING & CINEMA</span><h2>あなたの棚へ</h2><p>初めての方も、Googleアカウントで始められます。</p>${returning ? '<p class="auth-return">ログイン後に、開こうとしたページへ戻ります。</p>' : ""}${googleLoginButton()}<div id="auth-error" class="error" role="alert">${esc(authState.error)}</div>${!authState.configured ? '<p class="auth-note">Googleログインは接続設定の準備中です。</p>' : ""}<p class="auth-note">Googleのパスワードを、このアプリに入力する必要はありません。記録は現在、このブラウザ内に保存されます。</p><details class="demo-options" ${authMode === "register" ? "open" : ""}><summary>デモを試す</summary><span class="demo-label">DEMO / パスワード不要</span>${authMode === "login" ? `<div class="demo-users">${demoStore.data.users.map((u) => `<button class="demo-user" data-action="login" data-id="${u.id}">${avatar(u)}<span><strong>${esc(u.name)}</strong><small>このブラウザだけのデモユーザー</small></span>${icon("arrow-right")}</button>`).join("")}</div>${action("auth-register", "デモ用の棚をつくる " + icon("arrow-right"), "", "text-btn")}` : `<form id="register-form" class="register-form" novalidate><label>デモの表示名 <span class="muted">必須</span><input name="name" required maxlength="30" autocomplete="nickname" placeholder="あなたの名前"></label><div id="register-error" class="error" role="alert"></div><button class="btn primary" type="submit">デモを始める ${icon("arrow-right")}</button>${action("auth-login", "デモユーザーを選ぶ", "", "text-btn")}</form>`}</details></section></main>`;
 }
 function navItem(path, title, glyph) {
   return `<a href="#${path}" class="${route().startsWith(path) ? "active" : ""}" ${route().startsWith(path) ? 'aria-current="page"' : ""}>${icon(glyph)}<span>${title}</span></a>`;
@@ -606,7 +615,7 @@ function openAccount() {
       )
       .join(
         "",
-      )}</div>${action("google-login", icon("log-in") + "Googleアカウントでログイン")}${action("logout", icon("log-out") + "ログアウト")}<p class="field-hint">公開範囲はモック上の表示制御です。本番の認証・アクセス制御ではありません。データはこのブラウザ内にのみ保存されます。デモの棚はGoogleアカウントには移行されません。</p></div>`,
+      )}</div>${googleLoginButton()}${action("logout", icon("log-out") + "ログアウト")}<p class="field-hint">公開範囲はモック上の表示制御です。本番の認証・アクセス制御ではありません。データはこのブラウザ内にのみ保存されます。デモの棚はGoogleアカウントには移行されません。</p></div>`,
   );
 }
 function shareUrl(path) {

@@ -1,5 +1,9 @@
 # Demo Assets
 
+- `google-g-logo.png`: unmodified standard-color G logo downloaded from https://developers.google.com/static/identity/images/g-logo.png. Used only in Google sign-in buttons, following https://developers.google.com/identity/branding-guidelines. Google brand artwork is not covered by the application's own license.
+- `google-sans-signin.ttf`: Google Fonts' 500-weight Google Sans subset for the text `Google`, fetched through https://fonts.googleapis.com/css2?family=Google+Sans:wght@500&display=swap&text=Google. Original license: `GOOGLE-SANS-OFL.txt`. Japanese glyphs fall back to the system UI font.
+- Google sign-in button markup/styles derive from the official HTML configurator on the branding page (light rectangle, Japanese label, standard-color logo). Integration keeps the existing Supabase OAuth handler; it is not a Google Identity Services SDK-rendered button.
+
 - `readtrace-mark.png`: approved "pages and play" ReadTrace mark, generated for this project; transparent charcoal symbol shared by book/movie themes.
 - `supabase-2.119.0.js`: Supabase JavaScript SDK 2.119.0, from the official npm package via jsDelivr; MIT license in `SUPABASE-LICENSE`. Loaded only when Auth is configured.
 
