@@ -1,44 +1,48 @@
-# ReadTrace Prototype
+# ReadTrace: 本と映画の記録
 
-読書実績の可視化と、X/Twitter向け感想文の生成を試す静的プロトタイプです。
+日本語の操作可能なWebモックです。既存の静的HTMLとNodeサーバーを継承しています。依存パッケージのインストールやビルドは不要です。
 
-公開版:
+## 起動
 
-```text
-https://yuumaokamori015710-droid.github.io/readtrace-prototype/
-```
-
-## Book Search
-
-GitHub Pages でも動くように、APIキー不要の外部APIをブラウザから直接使います。
-
-- NDLサーチ: 日本語タイトル検索を優先して取得
-- openBD: ISBNが分かる本の日本語書誌と書影補正
-- Open Library: 英語・海外タイトル検索、著者、ISBN、表紙候補
-- ローカルDB: 外部APIが見つからないときのフォールバック
-
-## Supabase Auth
-
-ログインは Supabase Auth のメールリンク方式です。公開ページ右上のログインから
-Supabase Project URL と anon key を保存すると、そのブラウザでログインを試せます。
-
-Supabase SQL Editor で `outputs/supabase-schema.sql` を実行すると、ログインユーザーごとの
-本棚保存テーブル `readtrace_books` とRLSポリシーが作成されます。
-
-## Local
+Node.js 20以降で、リポジトリのルートから実行します。
 
 ```powershell
-cd outputs
-node reading-prototype-server.mjs
+npm start
 ```
 
-Open:
+http://127.0.0.1:8011/reading-prototype.html を開いてください。ポートを変更する場合は、PowerShellで `$env:PORT=8012` を設定してから起動します。
 
-```text
-http://127.0.0.1:8011/reading-prototype.html
+## 操作
+
+- ログイン画面で青山しおり・佐々木遥・森健太のいずれかを選ぶと、それぞれの棚を開けます。パスワードは不要です。新規登録は表示名だけで空の棚を作ります。
+- 本／映画タブ、状態フィルター、棚の検索と並べ替えを利用できます。
+- 「作品を追加」で各30作品のサンプルを検索できます。検索例は「舟を編む」「ラ・ラ・ランド」。一致しない検索語は、そのまま手入力へ引き継ぎます。
+- 作品を開くと、状態・0.5刻みの評価・任意の感想と日付・ネタバレ・公開範囲を編集できます。完了記録は評価必須です。
+- プロフィールと公開棚、フォロー、みんなの記録、いいね、コメント、削除確認、URL共有を操作できます。
+- アカウントメニューからデモユーザーの切り替えとログアウトができます。右上のアバターまたはスマホ下部の「自分」から開きます。月間読書目標と実績も利用できます。
+
+UI PocketのApple Books掲載画面を参考に、表紙中心の棚・進行中作品の横並び・スマホ下部の追加ボタンを採用しています。参考と確認内容は `outputs/ui-redesign.md` に記載しています。
+
+本の棚は緑、映画の棚は赤のテーマです。スマホでは表紙を横にドラッグして作品を選べる立体棚を表示し、回転ボタンで表紙を一周回せます。右上の表示切り替えから一覧にも戻せます。Three.jsを同梱しており、WebGLが利用できない場合は一覧へ戻ります。
+
+## 保存と共有
+
+記録・設定・交流は `readtrace:books-films:v2`、デモログインは `readtrace:demo-session:v2` に保存されます。旧版の保存データは変更しません。
+
+非公開記録は本人以外の一覧・詳細・共有から除外します。公開記録でも閲覧にはデモログインが必要です。共有URLの遷移先はログイン後も維持されます。ネタバレ本文は一覧・共有プレビューに出ず、他ユーザーの詳細では操作するまで表示しません。
+
+これらはブラウザ上の表示制御であり、本番のセキュリティ実装ではありません。同じブラウザ・同じ配信元でのみ変更が共有され、別端末へは同期されません。検索はサンプルデータを使用し、実認証・有料API・バックエンドは使いません。一部の表紙画像は外部から読み込みますが、取得できなくても組み込みの代替表紙を表示します。
+
+## 確認
+
+```powershell
+npm test
 ```
 
-## Deploy
+14件の保存・評価・公開範囲・交流のテストがあります。実ブラウザでの確認内容と制約は `outputs/verification.md` を参照してください。
 
-This repository deploys the static `outputs` directory from the `gh-pages`
-branch.
+## 既存版
+
+従来の読書ダッシュボード・X投稿文生成・外部書籍検索・Supabaseのプロトタイプは `outputs/reading-legacy.html` に保存しています。既存サーバーのAPI機能と `outputs/supabase-schema.sql` は維持しています。書籍APIの説明は `outputs/reading-prototype-api-readme.md` にあります。
+
+GitHub Pagesは `gh-pages` ブランチのルートから配信します。`reading-prototype.html`・`readtrace*.mjs`（テストを除く）・`readtrace.css`・`assets`・`index.html`・`.nojekyll` をまとめて公開してください。`.env`、サーバー、ログ、ローカル確認用スクリーンショットは配信不要です。

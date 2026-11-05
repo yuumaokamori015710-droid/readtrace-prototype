@@ -1,5 +1,6 @@
 outputs/.env
 outputs/*.log
+outputs/qa/
 work/
 node_modules/
 .DS_Store

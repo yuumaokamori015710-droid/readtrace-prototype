@@ -27,15 +27,18 @@ async function loadDotEnv(filePath) {
 
 await loadDotEnv(join(root, ".env"));
 
-const port = Number(process.env.PORT || 8010);
+const port = Number(process.env.PORT || 8011);
 const googleBooksApiKey = normalizeSecret(process.env.GOOGLE_BOOKS_API_KEY || "");
 const googleBooksProxy = normalizeSecret(process.env.HTTPS_PROXY || process.env.HTTP_PROXY || "");
 
 const mime = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".jpg": "image/jpeg",
+  ".png": "image/png",
 };
 
 function googleBooks(query) {

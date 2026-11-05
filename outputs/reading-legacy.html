@@ -1,0 +1,2665 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ReadTrace Prototype</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1d2320;
+      --muted: #64706a;
+      --line: #d8dfd9;
+      --paper: #fbfaf6;
+      --panel: #ffffff;
+      --sage: #5d7764;
+      --sage-strong: #2f5d48;
+      --sky: #dcebf2;
+      --coral: #ef9b7d;
+      --gold: #d8a83f;
+      --plum: #8d6f98;
+      --shadow: 0 16px 40px rgba(31, 43, 36, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Inter, "Yu Gothic UI", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+      background: var(--paper);
+      color: var(--ink);
+      letter-spacing: 0;
+    }
+
+    button, input, textarea, select {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 248px minmax(0, 1fr);
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 24px 18px;
+      background: #f2f4ee;
+      border-right: 1px solid var(--line);
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+    }
+
+    .brand {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 0 6px;
+    }
+
+    .brand-mark {
+      width: 42px;
+      height: 42px;
+      border-radius: 8px;
+      background:
+        linear-gradient(90deg, rgba(255,255,255,0.28), transparent 42%),
+        linear-gradient(135deg, #2f5d48, #7e9b78);
+      box-shadow: inset 7px 0 0 rgba(255,255,255,0.28);
+    }
+
+    .brand strong {
+      display: block;
+      font-size: 18px;
+      line-height: 1.1;
+    }
+
+    .brand span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .nav {
+      display: grid;
+      gap: 6px;
+    }
+
+    .nav button {
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--muted);
+      padding: 11px 12px;
+      text-align: left;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .nav button.active {
+      background: var(--panel);
+      color: var(--sage-strong);
+      box-shadow: 0 6px 16px rgba(47, 93, 72, 0.08);
+    }
+
+    .icon {
+      width: 18px;
+      height: 18px;
+      flex: 0 0 18px;
+    }
+
+    .reading-goal {
+      margin-top: auto;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .reading-goal h3,
+    .panel h3,
+    .section-title h2 {
+      margin: 0;
+      font-size: 16px;
+    }
+
+    .goal-ring {
+      margin: 18px auto 10px;
+      width: 132px;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: conic-gradient(var(--sage-strong) 0 71%, #e3e7df 71% 100%);
+      display: grid;
+      place-items: center;
+    }
+
+    .goal-ring div {
+      width: 92px;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: var(--panel);
+      display: grid;
+      place-items: center;
+      text-align: center;
+      font-weight: 700;
+    }
+
+    .goal-ring span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    main {
+      min-width: 0;
+      padding: 24px;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) auto auto auto;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 22px;
+    }
+
+    .search {
+      position: relative;
+    }
+
+    .search svg {
+      position: absolute;
+      left: 13px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+    }
+
+    .search input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px 14px 12px 42px;
+      background: var(--panel);
+      outline: none;
+    }
+
+    .search input:focus,
+    textarea:focus,
+    select:focus,
+    input:focus {
+      border-color: var(--sage);
+      box-shadow: 0 0 0 3px rgba(93, 119, 100, 0.16);
+    }
+
+    .primary,
+    .ghost,
+    .icon-btn {
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      min-height: 42px;
+      background: var(--panel);
+      color: var(--ink);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 0 14px;
+    }
+
+    .primary {
+      border-color: var(--sage-strong);
+      background: var(--sage-strong);
+      color: #fff;
+    }
+
+    .icon-btn {
+      width: 42px;
+      padding: 0;
+    }
+
+    .auth-button {
+      max-width: 220px;
+    }
+
+    .auth-button span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .screen {
+      display: none;
+    }
+
+    .screen.active {
+      display: block;
+    }
+
+    .hero {
+      min-height: 276px;
+      border-radius: 8px;
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 340px;
+      background:
+        linear-gradient(90deg, rgba(17, 25, 20, 0.82), rgba(17, 25, 20, 0.42)),
+        url("https://images.unsplash.com/photo-1521587760476-6c12a4b040da?auto=format&fit=crop&w=1600&q=80");
+      background-size: cover;
+      background-position: center;
+      color: #fff;
+      box-shadow: var(--shadow);
+    }
+
+    .hero-copy {
+      padding: 32px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      max-width: 760px;
+    }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: rgba(255,255,255,0.8);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(34px, 5vw, 58px);
+      line-height: 0.98;
+      max-width: 700px;
+    }
+
+    .hero-copy p {
+      margin: 16px 0 0;
+      max-width: 620px;
+      color: rgba(255,255,255,0.84);
+      line-height: 1.7;
+    }
+
+    .hero-stats {
+      align-self: end;
+      margin: 24px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .glass {
+      border: 1px solid rgba(255,255,255,0.25);
+      background: rgba(255,255,255,0.16);
+      backdrop-filter: blur(14px);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .glass strong {
+      display: block;
+      font-size: 30px;
+    }
+
+    .glass span {
+      color: rgba(255,255,255,0.78);
+      font-size: 13px;
+    }
+
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.5fr) minmax(300px, 0.8fr);
+      gap: 18px;
+      margin-top: 18px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+    }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .section-title p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .achievement-dashboard {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+      gap: 18px;
+      margin-top: 18px;
+      align-items: start;
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .kpi {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 15px;
+      min-height: 112px;
+      display: grid;
+      align-content: space-between;
+    }
+
+    .kpi span,
+    .pace-row span,
+    .milestone span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .kpi strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 30px;
+      line-height: 1;
+    }
+
+    .kpi small {
+      color: var(--sage-strong);
+      font-weight: 700;
+      font-size: 12px;
+    }
+
+    .trend-card {
+      margin-top: 12px;
+      min-height: 330px;
+    }
+
+    .trend-chart {
+      width: 100%;
+      height: 250px;
+      overflow: visible;
+    }
+
+    .trend-chart text {
+      fill: var(--muted);
+      font-size: 11px;
+    }
+
+    .trend-chart .grid-line {
+      stroke: #e5eae4;
+      stroke-width: 1;
+    }
+
+    .trend-chart .area {
+      fill: rgba(93, 119, 100, 0.14);
+    }
+
+    .trend-chart .line {
+      fill: none;
+      stroke: var(--sage-strong);
+      stroke-width: 4;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .trend-chart .page-line {
+      fill: none;
+      stroke: var(--coral);
+      stroke-width: 3;
+      stroke-linecap: round;
+      stroke-dasharray: 5 7;
+    }
+
+    .chart-legend {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .chart-legend i {
+      display: inline-block;
+      width: 24px;
+      height: 3px;
+      border-radius: 999px;
+      margin-right: 6px;
+      vertical-align: middle;
+      background: var(--sage-strong);
+    }
+
+    .chart-legend i.pages {
+      background: var(--coral);
+    }
+
+    .side-dashboard {
+      display: grid;
+      gap: 12px;
+    }
+
+    .progress-card {
+      display: grid;
+      grid-template-columns: 128px minmax(0, 1fr);
+      gap: 16px;
+      align-items: center;
+    }
+
+    .progress-ring {
+      width: 128px;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: conic-gradient(var(--sage-strong) var(--progress), #e3e7df 0);
+      display: grid;
+      place-items: center;
+    }
+
+    .progress-ring div {
+      width: 88px;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: var(--panel);
+      display: grid;
+      place-items: center;
+      text-align: center;
+      font-weight: 800;
+    }
+
+    .progress-ring span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .progress-copy strong {
+      display: block;
+      font-size: 22px;
+      margin-bottom: 4px;
+    }
+
+    .progress-copy p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .goal-form {
+      margin-top: 12px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: end;
+    }
+
+    .goal-form label {
+      font-size: 12px;
+    }
+
+    .goal-form input {
+      min-height: 38px;
+    }
+
+    .goal-form button {
+      min-height: 38px;
+      padding: 0 12px;
+    }
+
+    .pace-list,
+    .milestone-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .pace-row,
+    .milestone {
+      display: grid;
+      gap: 6px;
+    }
+
+    .pace-head,
+    .milestone {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .track {
+      height: 8px;
+      border-radius: 999px;
+      background: #edf1eb;
+      overflow: hidden;
+    }
+
+    .track i {
+      display: block;
+      height: 100%;
+      width: var(--w);
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--sage-strong), var(--gold));
+    }
+
+    .genre-wrap {
+      display: grid;
+      grid-template-columns: 132px minmax(0, 1fr);
+      gap: 14px;
+      align-items: center;
+    }
+
+    .genre-donut {
+      width: 132px;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: conic-gradient(var(--sage-strong) 0 32%, var(--coral) 32% 56%, var(--gold) 56% 75%, var(--plum) 75% 100%);
+      display: grid;
+      place-items: center;
+    }
+
+    .genre-donut div {
+      width: 78px;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: var(--panel);
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+    }
+
+    .genre-legend {
+      display: grid;
+      gap: 8px;
+    }
+
+    .genre-legend span {
+      color: var(--muted);
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .genre-legend i {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 6px;
+    }
+
+    .empty-state {
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      background: #f8f9f5;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .empty-state strong {
+      display: block;
+      color: var(--ink);
+      font-size: 15px;
+      margin-bottom: 4px;
+    }
+
+    .mood-map {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .mood {
+      border-radius: 8px;
+      padding: 14px;
+      min-height: 90px;
+    }
+
+    .mood strong {
+      display: block;
+      font-size: 22px;
+      margin-bottom: 6px;
+    }
+
+    .mood span {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .book-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(150px, 1fr));
+      gap: 16px;
+    }
+
+    .book-card {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 8px;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: 218px auto;
+      min-width: 0;
+    }
+
+    .cover {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      background: #e8ece4;
+    }
+
+    .book-body {
+      padding: 12px;
+      min-width: 0;
+    }
+
+    .book-body h3 {
+      margin: 0 0 4px;
+      font-size: 15px;
+      line-height: 1.35;
+    }
+
+    .book-body p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .tag {
+      border-radius: 999px;
+      background: #edf2ea;
+      color: var(--sage-strong);
+      padding: 5px 9px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .stars {
+      color: var(--gold);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .catalog-search {
+      display: grid;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .catalog-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      flex-wrap: wrap;
+    }
+
+    .catalog-list {
+      max-height: 304px;
+      overflow: auto;
+      display: grid;
+      gap: 10px;
+      padding-right: 4px;
+    }
+
+    .catalog-card {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #fdfdfb;
+      border-radius: 8px;
+      padding: 10px;
+      display: grid;
+      grid-template-columns: 54px minmax(0, 1fr);
+      gap: 10px;
+      text-align: left;
+    }
+
+    .catalog-card:hover,
+    .catalog-card.selected {
+      border-color: var(--sage);
+      box-shadow: 0 0 0 3px rgba(93, 119, 100, 0.12);
+    }
+
+    .catalog-card img {
+      width: 54px;
+      aspect-ratio: 2 / 3;
+      border-radius: 5px;
+      object-fit: cover;
+      background: #e8ece4;
+    }
+
+    .catalog-card strong {
+      display: block;
+      margin-bottom: 3px;
+      font-size: 14px;
+      line-height: 1.35;
+    }
+
+    .catalog-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .catalog-tags {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+
+    .source-pill {
+      border-radius: 999px;
+      background: #edf2ea;
+      color: var(--sage-strong);
+      padding: 4px 8px;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .feed {
+      display: grid;
+      gap: 12px;
+    }
+
+    .post {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .post-head {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .avatar {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      background: var(--plum);
+      font-weight: 700;
+    }
+
+    .post-head strong {
+      display: block;
+    }
+
+    .post-head span,
+    .post-meta {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .post blockquote {
+      margin: 12px 0;
+      border-left: 3px solid var(--coral);
+      padding-left: 12px;
+      color: #38433d;
+      line-height: 1.65;
+    }
+
+    .post-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .post-actions button {
+      border: 1px solid var(--line);
+      background: #fafbf8;
+      border-radius: 999px;
+      padding: 7px 11px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .tabs,
+    .filters {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .tabs button,
+    .filters button {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 999px;
+      padding: 8px 12px;
+      color: var(--muted);
+    }
+
+    .tabs button.active,
+    .filters button.active {
+      background: var(--sage-strong);
+      color: #fff;
+      border-color: var(--sage-strong);
+    }
+
+    .review-composer {
+      display: grid;
+      grid-template-columns: 112px minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .review-composer img {
+      width: 112px;
+      aspect-ratio: 2 / 3;
+      object-fit: cover;
+      border-radius: 6px;
+      box-shadow: 0 12px 24px rgba(31, 43, 36, 0.16);
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    input,
+    select,
+    textarea {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--ink);
+      padding: 10px 11px;
+      outline: none;
+      min-width: 0;
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 96px;
+      line-height: 1.6;
+    }
+
+    .wide {
+      grid-column: 1 / -1;
+    }
+
+    .insight-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .insight {
+      border-radius: 8px;
+      padding: 14px;
+      background: #f7f8f4;
+      border: 1px solid var(--line);
+    }
+
+    .insight strong {
+      display: block;
+      margin-bottom: 5px;
+    }
+
+    .insight span {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .share-panel {
+      display: grid;
+      gap: 14px;
+    }
+
+    .mode-control {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f7f8f4;
+    }
+
+    .mode-control button {
+      min-height: 36px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      padding: 0 8px;
+    }
+
+    .mode-control button.active {
+      background: var(--panel);
+      color: var(--sage-strong);
+      box-shadow: 0 4px 12px rgba(31, 43, 36, 0.08);
+    }
+
+    .tweet-preview {
+      min-height: 230px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fdfdfb;
+      padding: 14px;
+      color: #2d3732;
+      line-height: 1.7;
+      white-space: pre-wrap;
+    }
+
+    .tweet-tools {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .char-count {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .char-count.warn {
+      color: #b45d42;
+      font-weight: 700;
+    }
+
+    .auth-stack {
+      display: grid;
+      gap: 14px;
+    }
+
+    .auth-panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: #f8f9f5;
+      display: grid;
+      gap: 12px;
+    }
+
+    .auth-panel h3 {
+      margin: 0;
+      font-size: 15px;
+    }
+
+    .auth-note {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .auth-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      display: none;
+      place-items: center;
+      padding: 20px;
+      background: rgba(20, 28, 24, 0.42);
+      z-index: 20;
+    }
+
+    .modal.active {
+      display: grid;
+    }
+
+    .dialog {
+      width: min(680px, 100%);
+      max-height: min(760px, 92vh);
+      overflow: auto;
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+    }
+
+    .dialog-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .toast {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      transform: translateY(20px);
+      opacity: 0;
+      pointer-events: none;
+      background: #1d2320;
+      color: #fff;
+      border-radius: 8px;
+      padding: 12px 14px;
+      transition: 0.2s ease;
+      z-index: 30;
+    }
+
+    .toast.active {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    @media (max-width: 1020px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: static;
+        height: auto;
+        padding: 14px;
+      }
+
+      .nav {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .reading-goal {
+        display: none;
+      }
+
+      .achievement-dashboard,
+      .dashboard-grid,
+      .hero {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-stats {
+        grid-template-columns: repeat(3, 1fr);
+        margin-top: 0;
+      }
+
+      .kpi-grid,
+      .book-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 640px) {
+      main {
+        padding: 14px;
+      }
+
+      .topbar {
+        grid-template-columns: 1fr auto;
+      }
+
+      .topbar .primary,
+      .topbar .auth-button {
+        grid-column: 1 / -1;
+      }
+
+      .nav {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .hero-copy {
+        padding: 24px;
+      }
+
+      .hero-stats,
+      .kpi-grid,
+      .book-grid,
+      .mood-map,
+      .genre-wrap,
+      .progress-card,
+      .mode-control,
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .review-composer {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"></div>
+        <div>
+          <strong>ReadTrace</strong>
+          <span>読後の変化を残す本棚</span>
+        </div>
+      </div>
+
+      <nav class="nav" aria-label="メイン">
+        <button class="active" data-screen="home">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l9-9 9 9"/><path d="M9 21V9h6v12"/></svg>
+          ホーム
+        </button>
+        <button data-screen="library">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5z"/></svg>
+          本棚
+        </button>
+        <button data-screen="feed">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>
+          フィード
+        </button>
+        <button data-screen="review">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+          記録する
+        </button>
+      </nav>
+
+      <section class="reading-goal">
+        <h3>今月の読書目標</h3>
+        <div class="goal-ring">
+          <div id="sidebarGoalValue">0/5<span>今月の目標</span></div>
+        </div>
+        <p id="sidebarGoalText" style="margin:0;color:var(--muted);font-size:13px;line-height:1.55;">月間目標を決めて、読了を積み上げられます。</p>
+      </section>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div class="search">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input id="searchInput" placeholder="本、著者、感想、学びで検索">
+        </div>
+        <button class="ghost auth-button" id="authButton" type="button">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>
+          <span id="authButtonLabel">ログイン</span>
+        </button>
+        <button class="icon-btn" id="notifyBtn" aria-label="通知">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 7h18s-3 0-3-7"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        </button>
+        <button class="primary" id="openAdd">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          本を追加
+        </button>
+      </header>
+
+      <section class="screen active" id="home">
+        <div class="hero">
+          <div class="hero-copy">
+            <p class="eyebrow">Goodreads inspired, reflection first</p>
+            <h1>読んだ量だけでなく、読んで変わったことまで見える。</h1>
+            <p>本棚、レビュー、友達の感想共有に加えて、読後の気分・学び・考え方の変化を記録。自分の読書傾向が、あとからちゃんと使える知識になります。</p>
+          </div>
+          <div class="hero-stats">
+            <div class="glass"><strong id="heroDoneCount">0</strong><span>読了冊数</span></div>
+            <div class="glass"><strong id="heroReadingCount">0</strong><span>読んでいる本</span></div>
+            <div class="glass"><strong id="heroWantCount">0</strong><span>読みたい本</span></div>
+          </div>
+        </div>
+
+        <div class="achievement-dashboard">
+          <div>
+            <div class="kpi-grid" id="kpiGrid"></div>
+            <section class="panel trend-card">
+              <div class="section-title">
+                <div>
+                  <h2>読書ペースの推移</h2>
+                  <p>読了冊数とページ数の積み上がりを同時に確認</p>
+                </div>
+              </div>
+              <svg class="trend-chart" id="trendChart" viewBox="0 0 720 250" role="img" aria-label="読書実績の推移"></svg>
+              <div class="chart-legend">
+                <span><i></i>累積読了冊数</span>
+                <span><i class="pages"></i>累積ページ数</span>
+              </div>
+            </section>
+          </div>
+
+          <aside class="side-dashboard">
+            <section class="panel progress-card">
+              <div class="progress-ring" id="progressRing">
+                <div><strong id="progressPercent">0%</strong><span>目標達成</span></div>
+              </div>
+              <div class="progress-copy">
+                <strong id="progressText">0/5冊</strong>
+                <p id="progressDetail">月間目標に対する進捗を表示します。</p>
+                <form class="goal-form" id="goalForm">
+                  <label>月間目標
+                    <input id="monthlyGoalInput" name="monthlyGoal" type="number" min="1" max="99" step="1" value="5">
+                  </label>
+                  <button class="ghost" type="submit">保存</button>
+                </form>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="section-title">
+                <div>
+                  <h2>今月のペース</h2>
+                  <p>冊数、ページ数、レビュー率の勢い</p>
+                </div>
+              </div>
+              <div class="pace-list" id="paceList"></div>
+            </section>
+
+            <section class="panel">
+              <div class="section-title">
+                <div>
+                  <h2>ジャンル配分</h2>
+                  <p>今月読んだ本のテーマ構成</p>
+                </div>
+              </div>
+              <div class="genre-wrap">
+                <div class="genre-donut" id="genreDonut"><div id="genreDonutTotal">0冊</div></div>
+                <div class="genre-legend" id="genreLegend"></div>
+              </div>
+            </section>
+          </aside>
+        </div>
+
+        <div class="dashboard-grid">
+          <section class="panel">
+            <div class="section-title">
+              <div>
+                <h2>達成ハイライト</h2>
+                <p>継続の手応えが見える節目</p>
+              </div>
+            </div>
+            <div class="milestone-list" id="milestoneList"></div>
+          </section>
+
+          <section class="panel">
+            <div class="section-title">
+              <div>
+                <h2>読後の変化</h2>
+                <p>感想から自動で見える傾向</p>
+              </div>
+            </div>
+            <div class="mood-map">
+              <div class="empty-state" style="grid-column:1 / -1;"><strong>まだ記録がありません</strong>読書記録が増えると、読後の変化がここに集計されます。</div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="screen" id="library">
+        <div class="section-title">
+          <div>
+            <h2>本棚</h2>
+            <p>ステータスで整理して、読書の流れを見失わない</p>
+          </div>
+          <div class="filters" id="libraryFilters">
+            <button class="active" data-filter="all">すべて</button>
+            <button data-filter="reading">読んでいる</button>
+            <button data-filter="done">読了</button>
+            <button data-filter="want">読みたい</button>
+          </div>
+        </div>
+        <div class="book-grid" id="bookGrid"></div>
+      </section>
+
+      <section class="screen" id="feed">
+        <div class="section-title">
+          <div>
+            <h2>感想フィード</h2>
+            <p>同じ本を読んだ人の気づきと、ネタバレを分けて読める</p>
+          </div>
+          <div class="tabs">
+            <button class="active">友達</button>
+            <button>同じ本</button>
+            <button>読書会</button>
+          </div>
+        </div>
+        <div class="feed" id="feedList"></div>
+      </section>
+
+      <section class="screen" id="review">
+        <div class="dashboard-grid">
+          <section class="panel">
+            <div class="section-title">
+              <div>
+                <h2>読書記録</h2>
+                <p>評価より先に、読後の変化を残す</p>
+              </div>
+            </div>
+            <div class="review-composer">
+              <img id="reviewCover" src="data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22320%22%20height%3D%22480%22%20viewBox%3D%220%200%20320%20480%22%3E%3Crect%20width%3D%22320%22%20height%3D%22480%22%20fill%3D%22%232f5d48%22%2F%3E%3Crect%20x%3D%2230%22%20y%3D%2230%22%20width%3D%22260%22%20height%3D%22420%22%20fill%3D%22rgba(255%2C255%2C255%2C.12)%22%20stroke%3D%22rgba(255%2C255%2C255%2C.35)%22%20stroke-width%3D%222%22%2F%3E%3Ctext%20x%3D%2250%22%20y%3D%22235%22%20fill%3D%22white%22%20font-size%3D%2228%22%20font-family%3D%22sans-serif%22%20font-weight%3D%22700%22%3EReadTrace%3C%2Ftext%3E%3C%2Fsvg%3E" alt="選択中の本の表紙">
+              <form id="reviewForm">
+                <div class="form-grid">
+                  <label>本
+                    <select name="book">
+                      <option value="">本を選択</option>
+                    </select>
+                  </label>
+                  <label>評価
+                    <select name="rating">
+                      <option>5.0</option>
+                      <option>4.5</option>
+                      <option>4.0</option>
+                      <option>3.5</option>
+                    </select>
+                  </label>
+                  <label>読後の気分
+                    <select name="mood">
+                      <option>視野が広がった</option>
+                      <option>行動したくなった</option>
+                      <option>問いが増えた</option>
+                      <option>誰かに勧めたい</option>
+                    </select>
+                  </label>
+                  <label>公開範囲
+                    <select name="visibility">
+                      <option>公開</option>
+                      <option>友達まで</option>
+                      <option>非公開</option>
+                    </select>
+                  </label>
+                  <label class="wide">感想
+                    <textarea name="review" placeholder="感想を入力"></textarea>
+                  </label>
+                  <label class="wide">この本で変わったこと
+                    <textarea name="change" placeholder="読後に変わった考えや行動を入力"></textarea>
+                  </label>
+                </div>
+                <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap;">
+                  <button type="button" class="ghost" id="saveDraft">下書き</button>
+                  <button type="submit" class="primary">投稿文を作る</button>
+                </div>
+              </form>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="section-title">
+              <div>
+                <h2>X投稿プレビュー</h2>
+                <p>読書メモを、そのまま投稿できる文章へ整える</p>
+              </div>
+            </div>
+            <div class="share-panel">
+              <div class="mode-control" id="tweetModes" aria-label="投稿文の雰囲気">
+                <button class="active" type="button" data-mode="short">ひとこと</button>
+                <button type="button" data-mode="deep">しっかり</button>
+                <button type="button" data-mode="recommend">おすすめ</button>
+              </div>
+              <div class="tweet-preview" id="tweetPreview" contenteditable="true" aria-label="X投稿プレビュー"></div>
+              <div class="tweet-tools">
+                <span class="char-count" id="tweetCount">0 / 280</span>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                  <button class="ghost" type="button" id="copyTweet">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    コピー
+                  </button>
+                  <button class="primary" type="button" id="openTweet">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l16 16"/><path d="M20 4 4 20"/></svg>
+                    Xで投稿
+                  </button>
+                </div>
+              </div>
+              <div class="insight"><strong>生成ルール</strong><span>タイトル、感想、読後の変化を使って、宣伝っぽくない自然な読了ポストに整えます。投稿前にこの欄で直接編集できます。</span></div>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal" id="addModal" aria-hidden="true">
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="addTitle">
+      <div class="dialog-head">
+        <h2 id="addTitle" style="margin:0;font-size:20px;">本を追加</h2>
+        <button class="icon-btn" id="closeAdd" aria-label="閉じる">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+      <form id="addForm">
+        <div class="catalog-search">
+          <label>本マスタから検索
+            <input id="catalogSearch" placeholder="タイトル、著者、ISBNで検索">
+          </label>
+          <div class="catalog-meta">
+            <span id="catalogCount">0件</span>
+            <span id="catalogSourceLabel">NDLサーチ / Open Library / openBD検索</span>
+          </div>
+          <div class="catalog-list" id="catalogList"></div>
+        </div>
+        <div class="form-grid">
+          <label>タイトル<input name="title"></label>
+          <label>著者<input name="author"></label>
+          <label>ステータス
+            <select name="status">
+              <option value="want">読みたい</option>
+              <option value="reading">読んでいる</option>
+              <option value="done">読了</option>
+            </select>
+          </label>
+          <label>ジャンル<input name="genre"></label>
+          <label class="wide">追加メモ<textarea name="note" placeholder="読後の気分や問いも一緒に残す"></textarea></label>
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:14px;">
+          <button class="primary" type="submit">本棚に追加</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal" id="authModal" aria-hidden="true">
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+      <div class="dialog-head">
+        <h2 id="authTitle" style="margin:0;font-size:20px;">ログイン</h2>
+        <button class="icon-btn" id="closeAuth" aria-label="閉じる">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+      <div class="auth-stack">
+        <section class="auth-panel">
+          <h3>Supabase</h3>
+          <p class="auth-note" id="supabaseStatus">未設定</p>
+          <form id="supabaseConfigForm" class="form-grid">
+            <label class="wide">Project URL
+              <input name="url" placeholder="https://xxxx.supabase.co">
+            </label>
+            <label class="wide">Anon key
+              <input name="anonKey" placeholder="eyJhbGciOi...">
+            </label>
+            <div class="wide auth-actions">
+              <button class="ghost" type="button" id="clearSupabaseConfig">設定を消す</button>
+              <button class="primary" type="submit">設定を保存</button>
+            </div>
+          </form>
+        </section>
+        <section class="auth-panel">
+          <h3>メールログイン</h3>
+          <p class="auth-note" id="authStatus">ログインしていません</p>
+          <form id="loginForm" class="form-grid">
+            <label class="wide">メールアドレス
+              <input name="email" type="email" autocomplete="email" placeholder="you@example.com">
+            </label>
+            <div class="wide auth-actions">
+              <button class="ghost" type="button" id="signOutButton">ログアウト</button>
+              <button class="primary" type="submit">ログインリンクを送る</button>
+            </div>
+          </form>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    function makeBookCover(title, genre) {
+      const colors = ["#2f5d48", "#5b6f95", "#8d6f98", "#b46b58", "#6b7f5f", "#6f5d46"];
+      const color = colors[Math.abs([...title].reduce((sum, char) => sum + char.charCodeAt(0), 0)) % colors.length];
+      const safeTitle = title.replace(/[&<>"']/g, "");
+      const safeGenre = genre.replace(/[&<>"']/g, "");
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="480" viewBox="0 0 320 480"><rect width="320" height="480" fill="${color}"/><rect x="26" y="28" width="268" height="424" fill="rgba(255,255,255,.12)" stroke="rgba(255,255,255,.35)" stroke-width="2"/><text x="42" y="92" fill="white" font-size="24" font-family="sans-serif" font-weight="700">${safeTitle.slice(0, 12)}</text><text x="42" y="130" fill="rgba(255,255,255,.82)" font-size="16" font-family="sans-serif">${safeGenre}</text><path d="M52 390h216" stroke="rgba(255,255,255,.45)" stroke-width="3"/></svg>`;
+      return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    }
+
+    const additionalCatalog = [
+      ["ノルウェイの森", "村上春樹", "小説"],
+      ["海辺のカフカ", "村上春樹", "小説"],
+      ["騎士団長殺し", "村上春樹", "小説"],
+      ["コンビニ人間", "村田沙耶香", "小説"],
+      ["推し、燃ゆ", "宇佐見りん", "小説"],
+      ["火花", "又吉直樹", "小説"],
+      ["流浪の月", "凪良ゆう", "小説"],
+      ["汝、星のごとく", "凪良ゆう", "小説"],
+      ["52ヘルツのクジラたち", "町田そのこ", "小説"],
+      ["成瀬は天下を取りにいく", "宮島未奈", "小説"],
+      ["蜜蜂と遠雷", "恩田陸", "小説"],
+      ["かがみの孤城", "辻村深月", "小説"],
+      ["傲慢と善良", "辻村深月", "小説"],
+      ["君の膵臓をたべたい", "住野よる", "小説"],
+      ["同志少女よ、敵を撃て", "逢坂冬馬", "小説"],
+      ["ハリー・ポッターと賢者の石", "J.K.ローリング", "ファンタジー"],
+      ["三体", "劉慈欣", "SF"],
+      ["プロジェクト・ヘイル・メアリー", "アンディ・ウィアー", "SF"],
+      ["アルジャーノンに花束を", "ダニエル・キイス", "SF"],
+      ["1984", "ジョージ・オーウェル", "小説・思想"],
+      ["動物農場", "ジョージ・オーウェル", "小説・思想"],
+      ["星の王子さま", "サン＝テグジュペリ", "文学"],
+      ["ライ麦畑でつかまえて", "J.D.サリンジャー", "文学"],
+      ["罪と罰", "ドストエフスキー", "文学"],
+      ["カラマーゾフの兄弟", "ドストエフスキー", "文学"],
+      ["変身", "フランツ・カフカ", "文学"],
+      ["異邦人", "アルベール・カミュ", "文学・哲学"],
+      ["ペスト", "アルベール・カミュ", "文学・哲学"],
+      ["こころ", "夏目漱石", "文学"],
+      ["坊っちゃん", "夏目漱石", "文学"],
+      ["人間失格", "太宰治", "文学"],
+      ["斜陽", "太宰治", "文学"],
+      ["雪国", "川端康成", "文学"],
+      ["金閣寺", "三島由紀夫", "文学"],
+      ["春琴抄", "谷崎潤一郎", "文学"],
+      ["羅生門", "芥川龍之介", "文学"],
+      ["高瀬舟", "森鴎外", "文学"],
+      ["生き方", "稲盛和夫", "人生論"],
+      ["7つの習慣", "スティーブン・R・コヴィー", "自己啓発"],
+      ["嫌われる勇気", "岸見一郎・古賀史健", "心理・哲学"],
+      ["幸せになる勇気", "岸見一郎・古賀史健", "心理・哲学"],
+      ["道は開ける", "D・カーネギー", "自己啓発"],
+      ["チーズはどこへ消えた？", "スペンサー・ジョンソン", "自己啓発"],
+      ["GIVE & TAKE", "アダム・グラント", "心理・仕事"],
+      ["Think Again", "アダム・グラント", "心理・仕事"],
+      ["ORIGINALS", "アダム・グラント", "心理・仕事"],
+      ["GRIT", "アンジェラ・ダックワース", "心理・教育"],
+      ["マインドセット", "キャロル・S・ドゥエック", "心理・教育"],
+      ["ファスト＆スロー", "ダニエル・カーネマン", "心理・経済"],
+      ["予想どおりに不合理", "ダン・アリエリー", "行動経済学"],
+      ["Nudge", "リチャード・セイラー", "行動経済学"],
+      ["ブルー・オーシャン戦略", "W・チャン・キム", "経営"],
+      ["ビジョナリー・カンパニー", "ジム・コリンズ", "経営"],
+      ["両利きの経営", "チャールズ・A・オライリー", "経営"],
+      ["HARD THINGS", "ベン・ホロウィッツ", "起業・経営"],
+      ["ゼロ・トゥ・ワン", "ピーター・ティール", "起業"],
+      ["起業の科学", "田所雅之", "起業"],
+      ["アントレプレナーの教科書", "スティーブン・G・ブランク", "起業"],
+      ["ジョブ理論", "クレイトン・クリステンセン", "マーケティング"],
+      ["イノベーションのジレンマ", "クレイトン・クリステンセン", "経営"],
+      ["マーケティング22の法則", "アル・ライズ", "マーケティング"],
+      ["ドリルを売るには穴を売れ", "佐藤義典", "マーケティング"],
+      ["USJを劇的に変えた、たった1つの考え方", "森岡毅", "マーケティング"],
+      ["確率思考の戦略論", "森岡毅・今西聖貴", "マーケティング"],
+      ["売れるもマーケ 当たるもマーケ", "アル・ライズ", "マーケティング"],
+      ["デザイン思考が世界を変える", "ティム・ブラウン", "デザイン"],
+      ["誰のためのデザイン？", "D・A・ノーマン", "デザイン"],
+      ["融けるデザイン", "渡邊恵太", "デザイン"],
+      ["ノンデザイナーズ・デザインブック", "Robin Williams", "デザイン"],
+      ["インタフェースデザインの心理学", "Susan Weinschenk", "UI・心理"],
+      ["Lean UX", "Jeff Gothelf", "UX"],
+      ["Inspired", "Marty Cagan", "プロダクト"],
+      ["Continuous Discovery Habits", "Teresa Torres", "プロダクト"],
+      ["ユーザーストーリーマッピング", "Jeff Patton", "プロダクト"],
+      ["Measure What Matters", "John Doerr", "経営・OKR"],
+      ["OKR", "クリスティーナ・ウォドキー", "経営・OKR"],
+      ["Team Geek", "Brian W. Fitzpatrick", "組織"],
+      ["エンジニアリング組織論への招待", "広木大地", "組織"],
+      ["Team Topologies", "Matthew Skelton", "組織"],
+      ["ピープルウエア", "Tom DeMarco", "組織"],
+      ["達人プログラマー", "David Thomas", "技術"],
+      ["リーダブルコード", "Dustin Boswell", "技術"],
+      ["Clean Code", "Robert C. Martin", "技術"],
+      ["Clean Architecture", "Robert C. Martin", "技術"],
+      ["Designing Data-Intensive Applications", "Martin Kleppmann", "技術"],
+      ["プリンシプル オブ プログラミング", "上田勲", "技術"],
+      ["オブジェクト指向設計実践ガイド", "Sandi Metz", "技術"],
+      ["SQLアンチパターン", "Bill Karwin", "技術"],
+      ["Webを支える技術", "山本陽平", "技術"],
+      ["入門 監視", "Mike Julian", "技術"],
+      ["データ指向アプリケーションデザイン", "Martin Kleppmann", "技術"],
+      ["統計学が最強の学問である", "西内啓", "統計"],
+      ["原因と結果の経済学", "中室牧子・津川友介", "統計・経済"],
+      ["データ分析の力", "伊藤公一朗", "統計・経済"],
+      ["シン・ニホン", "安宅和人", "社会・ビジネス"],
+      ["LIFE SHIFT", "リンダ・グラットン", "人生設計"],
+      ["WORK SHIFT", "リンダ・グラットン", "働き方"],
+      ["21 Lessons", "ユヴァル・ノア・ハラリ", "社会・歴史"],
+      ["Homo Deus", "ユヴァル・ノア・ハラリ", "社会・歴史"],
+      ["銃・病原菌・鉄", "ジャレド・ダイアモンド", "歴史・文明"],
+      ["文明崩壊", "ジャレド・ダイアモンド", "歴史・文明"],
+      ["サードドア", "アレックス・バナヤン", "キャリア"],
+      ["メモの魔力", "前田裕二", "知的生産"],
+      ["読みたいことを、書けばいい。", "田中泰延", "文章術"],
+      ["取材・執筆・推敲", "古賀史健", "文章術"],
+      ["20歳の自分に受けさせたい文章講義", "古賀史健", "文章術"],
+      ["新しい文章力の教室", "唐木元", "文章術"]
+    ];
+
+    const seedBookDatabase = [
+      { id: "b001", title: "身体はトラウマを記録する", author: "ベッセル・ヴァン・デア・コーク", genre: "心理・医療", source: "Open Library", cover: "https://covers.openlibrary.org/b/isbn/9780143127741-L.jpg", description: "心と身体のつながりを扱うノンフィクション。読後の変化を記録しやすい一冊。" },
+      { id: "b002", title: "FACTFULNESS", author: "ハンス・ロスリング", genre: "社会・データ", source: "Open Library", cover: "https://covers.openlibrary.org/b/isbn/9781250107817-L.jpg", description: "世界の見方をデータから整える本。思い込みの棚卸しに向く。" },
+      { id: "b003", title: "限りある時間の使い方", author: "オリバー・バークマン", genre: "時間術・思想", source: "Open Library", cover: "https://covers.openlibrary.org/b/isbn/9780374159122-L.jpg", description: "時間の有限性を前提に、選び方を見直す本。" },
+      { id: "b004", title: "DIE WITH ZERO", author: "ビル・パーキンス", genre: "人生設計", source: "Open Library", cover: "https://covers.openlibrary.org/b/isbn/9780358567097-L.jpg", description: "お金と経験の使い切り方から人生を考える。" },
+      { id: "b005", title: "思考の整理学", author: "外山滋比古", genre: "知的生産", source: "openBD", cover: "https://covers.openlibrary.org/b/isbn/9784480020475-L.jpg", description: "考える技術とアイデアの寝かせ方を扱う定番。" },
+      { id: "b006", title: "Atomic Habits", author: "James Clear", genre: "習慣・自己改善", source: "Open Library", cover: "https://covers.openlibrary.org/b/isbn/9780735211292-L.jpg", description: "小さな習慣を積み重ねる設計についての実践書。" },
+      { id: "b007", title: "The Design of Everyday Things", author: "Don Norman", genre: "デザイン", source: "Open Library", cover: "https://covers.openlibrary.org/b/isbn/9780465050659-L.jpg", description: "使いやすさと認知の観点からデザインを考える古典。" },
+      { id: "b008", title: "暇と退屈の倫理学", author: "國分功一郎", genre: "哲学", source: "openBD", cover: "https://covers.openlibrary.org/b/isbn/9784022618738-L.jpg", description: "退屈、消費、自由をめぐる思考を深める本。" },
+      { id: "b009", title: "嫌われる勇気", author: "岸見一郎・古賀史健", genre: "心理・哲学", source: "openBD", cover: "https://covers.openlibrary.org/b/isbn/9784478025819-L.jpg", description: "アドラー心理学を対話形式で読む。読後の行動変化につながりやすい。" },
+      { id: "b010", title: "夜と霧", author: "ヴィクトール・E・フランクル", genre: "思想・歴史", source: "NDL Search", cover: "https://covers.openlibrary.org/b/isbn/9784622006015-L.jpg", description: "極限状況における人間の意味への意志を描く。" },
+      { id: "b011", title: "人を動かす", author: "D・カーネギー", genre: "コミュニケーション", source: "Open Library", cover: "https://covers.openlibrary.org/b/isbn/9780671027032-L.jpg", description: "人間関係と影響力についての古典。" },
+      { id: "b012", title: "エッセンシャル思考", author: "グレッグ・マキューン", genre: "仕事術", source: "Open Library", cover: "https://covers.openlibrary.org/b/isbn/9780804137386-L.jpg", description: "より少なく、しかしより良く選ぶための考え方。" },
+      { id: "b013", title: "イシューからはじめよ", author: "安宅和人", genre: "思考法・仕事", source: "openBD", cover: "https://covers.openlibrary.org/b/isbn/9784862760852-L.jpg", description: "解くべき問いを見極めるための思考法。" },
+      { id: "b014", title: "具体と抽象", author: "細谷功", genre: "思考法", source: "openBD", cover: "https://covers.openlibrary.org/b/isbn/9784907623104-L.jpg", description: "物事を行き来して理解するための思考トレーニング。" },
+      { id: "b015", title: "サピエンス全史", author: "ユヴァル・ノア・ハラリ", genre: "歴史・社会", source: "Open Library", cover: "https://covers.openlibrary.org/b/isbn/9780062316097-L.jpg", description: "人類史を大きな視点から捉えるノンフィクション。" },
+      { id: "b016", title: "銃・病原菌・鉄", author: "ジャレド・ダイアモンド", genre: "歴史・文明", source: "NDL Search", cover: "https://covers.openlibrary.org/b/isbn/9780393317558-L.jpg", description: "文明の差を環境要因から考える大著。" },
+      { id: "b017", title: "影響力の武器", author: "ロバート・B・チャルディーニ", genre: "心理・マーケティング", source: "Open Library", cover: "https://covers.openlibrary.org/b/isbn/9780061241895-L.jpg", description: "説得と意思決定の心理メカニズムを扱う。" },
+      { id: "b018", title: "失敗の本質", author: "戸部良一ほか", genre: "組織論・歴史", source: "openBD", cover: "https://covers.openlibrary.org/b/isbn/9784122018334-L.jpg", description: "組織の意思決定と失敗から学ぶ日本的組織論の定番。" },
+      { id: "b019", title: "プロダクトマネジメントのすべて", author: "及川卓也・曽根原春樹・小城久美子", genre: "プロダクト", source: "openBD", cover: "https://covers.openlibrary.org/b/isbn/9784798166391-L.jpg", description: "プロダクトづくりの全体像をつかむための実務書。" },
+      { id: "b020", title: "ゼロ秒思考", author: "赤羽雄二", genre: "思考法・習慣", source: "openBD", cover: "https://covers.openlibrary.org/b/isbn/9784478020999-L.jpg", description: "メモ書きで思考を早く深くする実践法。" },
+      { id: "b021", title: "Lean Startup", author: "Eric Ries", genre: "起業・プロダクト", source: "Open Library", cover: "https://covers.openlibrary.org/b/isbn/9780307887894-L.jpg", description: "仮説検証と学習を軸にしたスタートアップの方法論。" },
+      { id: "b022", title: "問いのデザイン", author: "安斎勇樹・塩瀬隆之", genre: "対話・デザイン", source: "openBD", cover: "https://covers.openlibrary.org/b/isbn/9784761527433-L.jpg", description: "よい問いから対話と創造を生み出すための本。" },
+      { id: "b023", title: "独学大全", author: "読書猿", genre: "学習法", source: "openBD", cover: "https://covers.openlibrary.org/b/isbn/9784478108536-L.jpg", description: "学び方そのものを体系化した大きな道具箱。" },
+      { id: "b024", title: "コンテナ物語", author: "マルク・レビンソン", genre: "経済・物流", source: "NDL Search", cover: "https://covers.openlibrary.org/b/isbn/9780691136400-L.jpg", description: "物流の変化から世界経済を見るノンフィクション。" },
+      ...additionalCatalog.map(([title, author, genre], index) => ({
+        id: `seed-${String(index + 1).padStart(3, "0")}`,
+        title,
+        author,
+        genre,
+        source: "Seed Catalog",
+        cover: makeBookCover(title, genre),
+        description: `${genre}の読書候補。読書記録、感想共有、X投稿文生成のテストに使える本です。`
+      }))
+    ];
+
+    const bookDatabase = [];
+
+    const books = [];
+    const posts = [];
+    const monthData = [];
+
+    const statusLabel = { done: "読了", reading: "読んでいる", want: "読みたい" };
+    let tweetMode = "short";
+    let selectedCatalogBookId = "";
+    let currentCatalogResults = [];
+    let catalogSearchTimer;
+    let catalogRequestId = 0;
+    let catalogRemoteError = "";
+    let supabaseClient = null;
+    let supabaseClientKey = "";
+    let currentSession = null;
+    const SUPABASE_CONFIG_KEY = "readtrace:supabase-config";
+    const MONTHLY_GOAL_KEY = "readtrace:monthly-goal";
+
+    function showToast(message) {
+      const toast = document.querySelector("#toast");
+      toast.textContent = message;
+      toast.classList.add("active");
+      window.setTimeout(() => toast.classList.remove("active"), 1800);
+    }
+
+    function readMonthlyGoal() {
+      const value = Number(localStorage.getItem(MONTHLY_GOAL_KEY) || "5");
+      return Number.isFinite(value) && value > 0 ? Math.min(99, Math.round(value)) : 5;
+    }
+
+    function saveMonthlyGoal(value) {
+      const goal = Math.max(1, Math.min(99, Math.round(Number(value) || 5)));
+      localStorage.setItem(MONTHLY_GOAL_KEY, String(goal));
+      return goal;
+    }
+
+    function readSupabaseConfig() {
+      const fallback = window.READTRACE_SUPABASE || {};
+      try {
+        const stored = JSON.parse(localStorage.getItem(SUPABASE_CONFIG_KEY) || "{}");
+        return {
+          url: stored.url || fallback.url || "",
+          anonKey: stored.anonKey || fallback.anonKey || ""
+        };
+      } catch {
+        return { url: fallback.url || "", anonKey: fallback.anonKey || "" };
+      }
+    }
+
+    function hasSupabaseConfig(config = readSupabaseConfig()) {
+      return Boolean(config.url && config.anonKey);
+    }
+
+    function getSupabaseClient() {
+      const config = readSupabaseConfig();
+      const supabaseGlobal = window.supabase || globalThis.supabase;
+      if (!hasSupabaseConfig(config) || !supabaseGlobal?.createClient) return null;
+      const key = `${config.url}:${config.anonKey.slice(0, 12)}`;
+      if (!supabaseClient || supabaseClientKey !== key) {
+        supabaseClient = supabaseGlobal.createClient(config.url, config.anonKey);
+        supabaseClientKey = key;
+      }
+      return supabaseClient;
+    }
+
+    function updateAuthUi() {
+      const config = readSupabaseConfig();
+      const configured = hasSupabaseConfig(config);
+      const email = currentSession?.user?.email || "";
+      document.querySelector("#authButtonLabel").textContent = email || (configured ? "ログイン" : "Supabase設定");
+      document.querySelector("#supabaseStatus").textContent = configured
+        ? "Supabase設定済み"
+        : "Project URL と anon key を保存してください";
+      document.querySelector("#authStatus").textContent = email
+        ? `${email} でログイン中`
+        : configured
+          ? "ログインしていません"
+          : "Supabase未設定です";
+      const form = document.querySelector("#supabaseConfigForm");
+      form.elements.url.value = config.url;
+      form.elements.anonKey.value = config.anonKey;
+    }
+
+    function rowToBook(row) {
+      return {
+        id: row.id,
+        title: row.title,
+        author: row.author || "著者不明",
+        genre: row.genre || "未分類",
+        source: row.source || "Supabase",
+        description: row.description || "",
+        status: row.status || "want",
+        rating: row.rating || "未評価",
+        cover: row.cover || "https://covers.openlibrary.org/b/isbn/9784022618738-L.jpg",
+        isbn13: row.isbn13 || "",
+        isbn10: row.isbn10 || ""
+      };
+    }
+
+    function bookToRow(book) {
+      return {
+        title: book.title,
+        author: book.author,
+        genre: book.genre,
+        source: book.source,
+        description: book.description,
+        status: book.status,
+        rating: book.rating,
+        cover: book.cover,
+        isbn13: book.isbn13 || null,
+        isbn10: book.isbn10 || null
+      };
+    }
+
+    async function loadSupabaseBooks() {
+      const client = getSupabaseClient();
+      if (!client || !currentSession) return;
+      const { data, error } = await client
+        .from("readtrace_books")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) {
+        showToast("Supabaseの本棚を読めませんでした");
+        return;
+      }
+      books.splice(0, books.length, ...(data || []).map(rowToBook));
+      renderBooks(document.querySelector("#libraryFilters button.active")?.dataset.filter || "all");
+      renderDashboard();
+      renderReviewBookOptions();
+      showToast(data?.length ? "Supabaseの本棚を読み込みました" : "Supabaseの本棚は空です");
+    }
+
+    async function saveBookToSupabase(book) {
+      const client = getSupabaseClient();
+      if (!client || !currentSession) return book;
+      const { data, error } = await client
+        .from("readtrace_books")
+        .insert(bookToRow(book))
+        .select()
+        .single();
+      if (error) {
+        showToast("Supabase保存に失敗しました。ローカルに追加します");
+        return book;
+      }
+      showToast("Supabaseに保存しました");
+      return rowToBook(data);
+    }
+
+    async function initSupabaseAuth() {
+      const client = getSupabaseClient();
+      if (!client) {
+        updateAuthUi();
+        return;
+      }
+      const { data } = await client.auth.getSession();
+      currentSession = data.session;
+      updateAuthUi();
+      if (currentSession) loadSupabaseBooks();
+      client.auth.onAuthStateChange((_event, session) => {
+        currentSession = session;
+        updateAuthUi();
+        if (session) loadSupabaseBooks();
+      });
+    }
+
+    function renderBooks(filter = "all") {
+      const query = document.querySelector("#searchInput").value.trim().toLowerCase();
+      const visible = books.filter((book) => {
+        const matchesFilter = filter === "all" || book.status === filter;
+        const haystack = `${book.title} ${book.author} ${book.genre || ""} ${statusLabel[book.status]}`.toLowerCase();
+        return matchesFilter && haystack.includes(query);
+      });
+      if (!visible.length) {
+        document.querySelector("#bookGrid").innerHTML = `
+          <div class="empty-state" style="grid-column:1 / -1;">
+            <strong>本棚はまだ空です</strong>
+            本を追加すると、ステータス別の本棚とダッシュボードに反映されます。
+          </div>
+        `;
+        return;
+      }
+      document.querySelector("#bookGrid").innerHTML = visible.map((book) => `
+        <article class="book-card">
+          <img class="cover" src="${book.cover}" alt="${book.title}の表紙">
+          <div class="book-body">
+            <h3>${book.title}</h3>
+            <p>${book.author}</p>
+            <div class="status-row">
+              <span class="tag">${statusLabel[book.status]}</span>
+              <span class="stars">${book.rating === "未評価" ? book.rating : "★ " + book.rating}</span>
+            </div>
+            <div class="catalog-tags">
+              <span class="source-pill">${book.genre || "未分類"}</span>
+              <span class="source-pill">${book.source || "manual"}</span>
+            </div>
+          </div>
+        </article>
+      `).join("");
+    }
+
+    function pickIsbn(isbns = []) {
+      const clean = isbns.map((isbn) => String(isbn).replace(/[^0-9X]/gi, ""));
+      return clean.find((isbn) => isbn.length === 13) || clean.find((isbn) => isbn.length === 10) || "";
+    }
+
+    function extractIsbn(text) {
+      const clean = String(text || "").replace(/[^0-9X]/gi, "");
+      return clean.length === 10 || clean.length === 13 ? clean : "";
+    }
+
+    function hasJapanese(text) {
+      return /[\u3040-\u30ff\u3400-\u9fff]/.test(text);
+    }
+
+    function compactTitle(text) {
+      return String(text || "").replace(/[\s:：・「」『』"']/g, "").toLowerCase();
+    }
+
+    function isRelevantTitle(title, query) {
+      const target = compactTitle(title);
+      const keyword = compactTitle(query);
+      if (!target || !keyword) return false;
+      if (target === keyword) return true;
+      if (keyword.length <= 3) return target.startsWith(keyword);
+      return target.includes(keyword);
+    }
+
+    function mergeUniqueBooks(...groups) {
+      const seen = new Set();
+      return groups.flat().filter((book) => {
+        const isbn = book.isbn13 || book.isbn10;
+        const key = isbn || `${compactTitle(book.title)}-${compactTitle(book.author)}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+
+    function xmlText(node, selector) {
+      return node.querySelector(selector)?.textContent?.trim() || "";
+    }
+
+    function xmlTexts(node, selector) {
+      return Array.from(node.querySelectorAll(selector))
+        .map((item) => item.textContent.trim())
+        .filter(Boolean);
+    }
+
+    function isNdlBookCategory(categories) {
+      return categories.some((category) => category.includes("図書") || category.includes("本"));
+    }
+
+    function isbnFromText(text) {
+      const match = String(text || "").match(/97[89][-\d]{10,17}|[0-9X][-\d]{8,15}[0-9X]/i);
+      return match ? match[0].replace(/[^0-9X]/gi, "") : "";
+    }
+
+    function coverFromOpenLibrary(doc, isbn) {
+      if (doc.cover_i) return `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`;
+      if (isbn) return `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
+      return "https://covers.openlibrary.org/b/isbn/9784022618738-L.jpg";
+    }
+
+    function normalizeOpenLibraryBook(doc) {
+      const isbn = pickIsbn(doc.isbn || []);
+      const year = doc.first_publish_year ? `${doc.first_publish_year}年` : "";
+      const subject = (doc.subject || doc.person || doc.place || []).find(Boolean);
+      return {
+        id: `ol-${doc.key || doc.cover_edition_key || doc.edition_key?.[0] || crypto.randomUUID()}`,
+        title: doc.title || "タイトル不明",
+        author: (doc.author_name || ["著者不明"]).slice(0, 3).join("・"),
+        genre: subject || "未分類",
+        source: "Open Library",
+        sourceId: doc.key,
+        isbn13: isbn.length === 13 ? isbn : "",
+        isbn10: isbn.length === 10 ? isbn : "",
+        cover: coverFromOpenLibrary(doc, isbn),
+        description: [year, doc.publisher?.[0], "Open Libraryから取得した書誌候補。"].filter(Boolean).join(" / ")
+      };
+    }
+
+    function normalizeOpenBdBook(item, fallback) {
+      const summary = item?.summary || {};
+      if (!summary.title) return fallback;
+      return {
+        ...fallback,
+        id: `openbd-${summary.isbn || fallback.isbn13 || fallback.isbn10 || fallback.id}`,
+        title: summary.title || fallback.title,
+        author: summary.author || fallback.author,
+        genre: summary.publisher || fallback.genre || "未分類",
+        source: fallback.source === "Open Library" ? "Open Library + openBD" : "openBD",
+        isbn13: summary.isbn || fallback.isbn13,
+        cover: summary.cover || fallback.cover,
+        description: [summary.pubdate, summary.publisher, "openBDで日本語書誌を補正。"].filter(Boolean).join(" / ")
+      };
+    }
+
+    function normalizeNdlItem(item) {
+      const title = xmlText(item, "title") || xmlText(item, "dc\\:title");
+      const creators = xmlTexts(item, "dc\\:creator");
+      const author = creators.length ? creators.join("・") : xmlText(item, "author") || "著者不明";
+      const publisher = xmlText(item, "dc\\:publisher");
+      const issued = xmlText(item, "dcterms\\:issued") || xmlText(item, "dc\\:date");
+      const categories = xmlTexts(item, "category");
+      const descriptions = xmlTexts(item, "description").concat(xmlTexts(item, "dc\\:description"));
+      const identifiers = xmlTexts(item, "dc\\:identifier");
+      const isbn = pickIsbn(identifiers.concat(descriptions.map(isbnFromText)));
+      const link = xmlText(item, "link") || xmlText(item, "guid");
+      return {
+        id: `ndl-${isbn || link || title}`,
+        title: title || "タイトル不明",
+        author,
+        genre: publisher || categories.find((category) => category !== "紙" && category !== "デジタル") || "図書",
+        source: "NDLサーチ",
+        sourceId: link,
+        isbn13: isbn.length === 13 ? isbn : "",
+        isbn10: isbn.length === 10 ? isbn : "",
+        cover: isbn ? `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg` : "https://covers.openlibrary.org/b/isbn/9784022618738-L.jpg",
+        description: [issued, publisher, "NDLサーチから取得した日本語書誌候補。"].filter(Boolean).join(" / "),
+        categories
+      };
+    }
+
+    async function fetchJson(url, timeout = 6500) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeout);
+      try {
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) throw new Error(`${response.status}`);
+        return await response.json();
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    async function fetchXml(url, timeout = 6500) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeout);
+      try {
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) throw new Error(`${response.status}`);
+        const text = await response.text();
+        const doc = new DOMParser().parseFromString(text, "application/xml");
+        if (doc.querySelector("parsererror")) throw new Error("XML parse error");
+        return doc;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    async function enrichWithOpenBd(books) {
+      const isbnBooks = books.filter((book) => book.isbn13 || book.isbn10).slice(0, 12);
+      if (!isbnBooks.length) return books;
+      try {
+        const isbnList = isbnBooks.map((book) => book.isbn13 || book.isbn10).join(",");
+        const data = await fetchJson(`https://api.openbd.jp/v1/get?isbn=${encodeURIComponent(isbnList)}`, 5000);
+        const enrichedByIsbn = new Map();
+        isbnBooks.forEach((book, index) => {
+          const isbn = book.isbn13 || book.isbn10;
+          enrichedByIsbn.set(isbn, normalizeOpenBdBook(data[index], book));
+        });
+        return books.map((book) => enrichedByIsbn.get(book.isbn13 || book.isbn10) || book);
+      } catch {
+        catalogRemoteError = catalogRemoteError || "openBDの補正に失敗しました";
+        return books;
+      }
+    }
+
+    async function searchOpenBdByIsbn(isbn) {
+      try {
+        const data = await fetchJson(`https://api.openbd.jp/v1/get?isbn=${encodeURIComponent(isbn)}`, 5000);
+        const fallback = {
+          id: `openbd-${isbn}`,
+          title: "タイトル不明",
+          author: "著者不明",
+          genre: "未分類",
+          source: "openBD",
+          isbn13: isbn.length === 13 ? isbn : "",
+          isbn10: isbn.length === 10 ? isbn : "",
+          cover: `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`,
+          description: "openBDから取得した書誌候補。"
+        };
+        const book = normalizeOpenBdBook(data[0], fallback);
+        return book.title === "タイトル不明" ? [] : [book];
+      } catch {
+        catalogRemoteError = "openBDに接続できません";
+        return [];
+      }
+    }
+
+    async function searchNdlBooks(query) {
+      try {
+        const params = new URLSearchParams({
+          title: query,
+          cnt: "16",
+          dpid: "iss-ndl-opac"
+        });
+        const doc = await fetchXml(`https://ndlsearch.ndl.go.jp/api/opensearch?${params.toString()}`, 6500);
+        const ndlResults = Array.from(doc.querySelectorAll("item"))
+          .map(normalizeNdlItem)
+          .filter((book) => book.title && book.title !== "タイトル不明" && isNdlBookCategory(book.categories || []))
+          .filter((book) => isRelevantTitle(book.title, query))
+          .sort((a, b) => Number(b.title === query) - Number(a.title === query))
+          .map(({ categories, ...book }) => book);
+        return await enrichWithOpenBd(ndlResults);
+      } catch {
+        catalogRemoteError = "NDLサーチに接続できません";
+        return [];
+      }
+    }
+
+    async function searchOpenLibraryBooks(query) {
+      try {
+        const params = new URLSearchParams({
+          title: query,
+          limit: "16",
+          fields: "key,title,author_name,isbn,cover_i,cover_edition_key,edition_key,first_publish_year,publisher,subject,person,place"
+        });
+        const data = await fetchJson(`https://openlibrary.org/search.json?${params.toString()}`, 6500);
+        const openLibraryResults = (data.docs || []).map(normalizeOpenLibraryBook);
+        return await enrichWithOpenBd(openLibraryResults);
+      } catch {
+        catalogRemoteError = "Open Libraryに接続できません";
+        return [];
+      }
+    }
+
+    async function searchExternalBooks(query) {
+      if (!query || query.length < 2) return [];
+      catalogRemoteError = "";
+      const isbn = extractIsbn(query);
+      if (isbn) return searchOpenBdByIsbn(isbn);
+      if (hasJapanese(query)) {
+        const ndlResults = await searchNdlBooks(query);
+        if (ndlResults.length >= 8) return ndlResults;
+        const openLibraryResults = await searchOpenLibraryBooks(query);
+        return mergeUniqueBooks(ndlResults, openLibraryResults);
+      }
+      return searchOpenLibraryBooks(query);
+    }
+
+    function mergeCatalogResults(localResults, remoteResults) {
+      const seen = new Set();
+      return [...localResults, ...remoteResults].filter((book) => {
+        const key = book.isbn13 || book.isbn10 || `${book.title}-${book.author}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+
+    async function renderCatalog() {
+      const requestId = ++catalogRequestId;
+      const query = document.querySelector("#catalogSearch").value.trim().toLowerCase();
+      const localResults = bookDatabase.filter((book) => {
+        const haystack = `${book.title} ${book.author} ${book.genre} ${book.source}`.toLowerCase();
+        return !query || haystack.includes(query);
+      });
+      const remoteResults = await searchExternalBooks(query);
+      if (requestId !== catalogRequestId) return;
+      const results = mergeCatalogResults(localResults, remoteResults).slice(0, 24);
+      currentCatalogResults = results;
+
+      document.querySelector("#catalogCount").textContent = `${results.length}件表示（外部${remoteResults.length}件）`;
+      document.querySelector("#catalogSourceLabel").textContent = remoteResults.length
+        ? "NDLサーチ / Open Library / openBDから取得"
+        : catalogRemoteError
+          ? `${catalogRemoteError}。候補を取得できません`
+          : query.length >= 2
+            ? "外部APIを検索しましたが候補0件"
+            : "タイトルかISBNを入力してください";
+      document.querySelector("#catalogList").innerHTML = results.map((book) => `
+        <button class="catalog-card ${book.id === selectedCatalogBookId ? "selected" : ""}" type="button" data-book-id="${book.id}">
+          <img src="${book.cover}" alt="${book.title}の表紙">
+          <span>
+            <strong>${book.title}</strong>
+            <p>${book.author}</p>
+            <p>${book.description}</p>
+            <span class="catalog-tags">
+              <span class="source-pill">${book.genre}</span>
+              <span class="source-pill">${book.source}</span>
+            </span>
+          </span>
+        </button>
+      `).join("");
+    }
+
+    function selectCatalogBook(bookId) {
+      const book = currentCatalogResults.find((item) => item.id === bookId) || bookDatabase.find((item) => item.id === bookId);
+      if (!book) return;
+      selectedCatalogBookId = book.id;
+      const form = document.querySelector("#addForm");
+      form.elements.title.value = book.title;
+      form.elements.author.value = book.author;
+      form.elements.genre.value = book.genre;
+      form.elements.note.value = book.description;
+      renderCatalog();
+    }
+
+    function renderFeed() {
+      if (!posts.length) {
+        document.querySelector("#feedList").innerHTML = `
+          <div class="empty-state">
+            <strong>フィードはまだ空です</strong>
+            フォローや読書記録が増えたら、感想の共有がここに表示されます。
+          </div>
+        `;
+        return;
+      }
+      document.querySelector("#feedList").innerHTML = posts.map((post) => `
+        <article class="post">
+          <div class="post-head">
+            <div class="avatar">${post.avatar}</div>
+            <div>
+              <strong>${post.user} が「${post.book}」の感想を共有</strong>
+              <span>${post.time}</span>
+            </div>
+          </div>
+          <blockquote>${post.quote}</blockquote>
+          <div class="post-meta">${post.meta}</div>
+          <div class="post-actions" style="margin-top:12px;">
+            <button>いいね</button>
+            <button>コメント</button>
+            <button>自分の本棚へ</button>
+          </div>
+        </article>
+      `).join("");
+    }
+
+    function renderReviewBookOptions() {
+      const select = document.querySelector("#reviewForm [name='book']");
+      const current = select.value;
+      select.innerHTML = books.length
+        ? books.map((book) => `<option value="${book.id}">${book.title}</option>`).join("")
+        : `<option value="">本を選択</option>`;
+      if (books.some((book) => book.id === current)) select.value = current;
+      const selected = books.find((book) => book.id === select.value);
+      document.querySelector("#reviewCover").src = selected?.cover || document.querySelector("#reviewCover").src;
+    }
+
+    function syncReviewCover() {
+      const select = document.querySelector("#reviewForm [name='book']");
+      const selected = books.find((book) => book.id === select.value);
+      if (selected?.cover) document.querySelector("#reviewCover").src = selected.cover;
+    }
+
+    function currentMonthlyData() {
+      if (monthData.length) return monthData;
+      const doneCount = books.filter((book) => book.status === "done").length;
+      const reviewedCount = books.filter((book) => book.rating && book.rating !== "未評価").length;
+      return doneCount ? [{ month: "現在", books: doneCount, pages: 0, reviews: reviewedCount }] : [];
+    }
+
+    function currentGenreData() {
+      const counts = new Map();
+      books.forEach((book) => counts.set(book.genre || "未分類", (counts.get(book.genre || "未分類") || 0) + 1));
+      const total = books.length;
+      const colors = ["var(--sage-strong)", "var(--coral)", "var(--gold)", "var(--plum)", "#5b6f95"];
+      return Array.from(counts.entries()).slice(0, 5).map(([label, count], index) => ({
+        label,
+        count,
+        value: total ? Math.round((count / total) * 100) : 0,
+        color: colors[index % colors.length]
+      }));
+    }
+
+    function cumulativeValues(data, key) {
+      let total = 0;
+      return data.map((item) => {
+        total += item[key];
+        return total;
+      });
+    }
+
+    function chartPath(values, width, height, padding) {
+      const max = Math.max(...values, 1);
+      return values.map((value, index) => {
+        const x = padding.left + (values.length === 1 ? 0.5 : index / (values.length - 1)) * (width - padding.left - padding.right);
+        const y = padding.top + (1 - value / max) * (height - padding.top - padding.bottom);
+        return `${index === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
+      }).join(" ");
+    }
+
+    function renderTrendChart(data) {
+      if (!data.length) {
+        document.querySelector("#trendChart").innerHTML = `<text x="360" y="126" text-anchor="middle">読了データはまだありません</text>`;
+        return;
+      }
+      const width = 720;
+      const height = 250;
+      const padding = { top: 24, right: 28, bottom: 34, left: 44 };
+      const bookTotals = cumulativeValues(data, "books");
+      const pageTotals = cumulativeValues(data, "pages");
+      const bookPath = chartPath(bookTotals, width, height, padding);
+      const pagePath = chartPath(pageTotals, width, height, padding);
+      const areaPath = `${bookPath} L ${width - padding.right} ${height - padding.bottom} L ${padding.left} ${height - padding.bottom} Z`;
+      const maxBooks = Math.max(...bookTotals, 1);
+      const gridLines = [0.25, 0.5, 0.75].map((ratio) => {
+        const y = padding.top + ratio * (height - padding.top - padding.bottom);
+        return `<line class="grid-line" x1="${padding.left}" x2="${width - padding.right}" y1="${y}" y2="${y}"></line>`;
+      }).join("");
+      const labels = data.map((item, index) => {
+        const x = padding.left + (data.length === 1 ? 0.5 : index / (data.length - 1)) * (width - padding.left - padding.right);
+        return `<text x="${x}" y="${height - 10}" text-anchor="middle">${item.month}</text>`;
+      }).join("");
+      const points = bookTotals.map((value, index) => {
+        const x = padding.left + (bookTotals.length === 1 ? 0.5 : index / (bookTotals.length - 1)) * (width - padding.left - padding.right);
+        const y = padding.top + (1 - value / maxBooks) * (height - padding.top - padding.bottom);
+        return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="var(--panel)" stroke="var(--sage-strong)" stroke-width="3"></circle>`;
+      }).join("");
+      document.querySelector("#trendChart").innerHTML = `
+        ${gridLines}
+        <path class="area" d="${areaPath}"></path>
+        <path class="page-line" d="${pagePath}"></path>
+        <path class="line" d="${bookPath}"></path>
+        ${points}
+        ${labels}
+      `;
+    }
+
+    function renderDashboard() {
+      const data = currentMonthlyData();
+      const genreData = currentGenreData();
+      const doneBooks = books.filter((book) => book.status === "done").length;
+      const readingBooks = books.filter((book) => book.status === "reading").length;
+      const wantBooks = books.filter((book) => book.status === "want").length;
+      const totalBooks = data.reduce((sum, item) => sum + item.books, 0);
+      const totalPages = data.reduce((sum, item) => sum + item.pages, 0);
+      const totalReviews = data.reduce((sum, item) => sum + item.reviews, 0);
+      const latest = data.at(-1) || { books: 0, pages: 0, reviews: 0 };
+      const previous = data.at(-2) || { books: 0, pages: 0, reviews: 0 };
+      const goal = readMonthlyGoal();
+      const currentMonthDone = latest.books;
+      const goalRate = Math.min(100, Math.round((currentMonthDone / goal) * 100));
+      const reviewRate = totalBooks ? Math.round((totalReviews / totalBooks) * 100) : 0;
+      const bookDelta = latest.books - previous.books;
+      const pageDelta = latest.pages - previous.pages;
+
+      document.querySelector("#heroDoneCount").textContent = doneBooks;
+      document.querySelector("#heroReadingCount").textContent = readingBooks;
+      document.querySelector("#heroWantCount").textContent = wantBooks;
+      document.querySelector("#monthlyGoalInput").value = goal;
+      document.querySelector("#sidebarGoalValue").innerHTML = `${currentMonthDone}/${goal}<span>今月の目標</span>`;
+      document.querySelector(".goal-ring").style.background = `conic-gradient(var(--sage-strong) 0 ${goalRate}%, #e3e7df ${goalRate}% 100%)`;
+      document.querySelector("#sidebarGoalText").textContent = currentMonthDone
+        ? `今月の目標まであと${Math.max(0, goal - currentMonthDone)}冊。`
+        : "月間目標を決めて、読了を積み上げられます。";
+
+      document.querySelector("#kpiGrid").innerHTML = [
+        ["本棚登録", `${books.length}冊`, "現在の登録数"],
+        ["読了", `${doneBooks}冊`, `${bookDelta >= 0 ? "+" : ""}${bookDelta}冊`],
+        ["レビュー率", `${reviewRate}%`, `${totalReviews}件を記録`],
+        ["累積ページ", `${totalPages.toLocaleString()}p`, `${pageDelta >= 0 ? "+" : ""}${pageDelta.toLocaleString()}p`]
+      ].map(([label, value, delta]) => `
+        <div class="kpi">
+          <span>${label}</span>
+          <strong>${value}</strong>
+          <small>${delta}</small>
+        </div>
+      `).join("");
+
+      document.querySelector("#progressRing").style.setProperty("--progress", `${goalRate}%`);
+      document.querySelector("#progressPercent").textContent = `${goalRate}%`;
+      document.querySelector("#progressText").textContent = `${currentMonthDone}/${goal}冊`;
+      document.querySelector("#progressDetail").textContent = currentMonthDone
+        ? `今月の目標まであと${Math.max(0, goal - currentMonthDone)}冊。`
+        : "読了にした本が増えると、月間目標の進捗が動きます。";
+
+      const paceItems = [
+        ["読了冊数", latest.books, Math.max(1, goal), `${latest.books}冊`],
+        ["読了ページ", latest.pages, Math.max(1, latest.pages || 1), `${latest.pages.toLocaleString()}p`],
+        ["レビュー率", reviewRate, 100, `${reviewRate}%`]
+      ];
+      document.querySelector("#paceList").innerHTML = paceItems.map(([label, value, max, display]) => `
+        <div class="pace-row">
+          <div class="pace-head"><strong>${label}</strong><span>${display}</span></div>
+          <div class="track"><i style="--w:${Math.min(100, Math.round((value / max) * 100))}%"></i></div>
+        </div>
+      `).join("");
+
+      document.querySelector("#genreDonutTotal").textContent = `${books.length}冊`;
+      if (genreData.length) {
+        let start = 0;
+        const stops = genreData.map((item) => {
+          const end = start + item.value;
+          const stop = `${item.color} ${start}% ${end}%`;
+          start = end;
+          return stop;
+        }).join(", ");
+        document.querySelector("#genreDonut").style.background = `conic-gradient(${stops})`;
+        document.querySelector("#genreLegend").innerHTML = genreData.map((item) => `
+          <span><b><i style="background:${item.color}"></i>${item.label}</b><strong>${item.value}%</strong></span>
+        `).join("");
+      } else {
+        document.querySelector("#genreDonut").style.background = "#e3e7df";
+        document.querySelector("#genreLegend").innerHTML = `<div class="empty-state"><strong>ジャンル未集計</strong>本を追加すると配分が出ます。</div>`;
+      }
+
+      const milestones = [
+        doneBooks >= 1 && ["初回読了", "最初の読了記録ができました"],
+        books.length >= 5 && ["本棚5冊", "読みたい本と読んだ本が並び始めました"],
+        reviewRate >= 80 && totalReviews >= 1 && ["レビュー率80%超", "読んだだけで終わらず感想も残せています"]
+      ].filter(Boolean);
+      document.querySelector("#milestoneList").innerHTML = milestones.length
+        ? milestones.map(([title, detail]) => `<div class="milestone"><strong>${title}</strong><span>${detail}</span></div>`).join("")
+        : `<div class="empty-state"><strong>達成ハイライトはまだありません</strong>読了やレビューが増えると、節目がここに表示されます。</div>`;
+
+      renderTrendChart(data);
+    }
+
+    function splitFirstSentence(text) {
+      const cleaned = text.trim().replace(/\s+/g, " ");
+      if (!cleaned) return "";
+      const match = cleaned.match(/^.+?[。.!?！？]/);
+      return match ? match[0] : cleaned;
+    }
+
+    function trimEnding(text) {
+      return text.trim().replace(/[。.!?！？、,\s]+$/g, "");
+    }
+
+    function getReviewData() {
+      const form = document.querySelector("#reviewForm");
+      const data = new FormData(form);
+      return {
+        book: books.find((book) => book.id === data.get("book"))?.title || "",
+        rating: data.get("rating"),
+        mood: data.get("mood"),
+        review: data.get("review"),
+        change: data.get("change")
+      };
+    }
+
+    function buildTweet(mode = tweetMode) {
+      const data = getReviewData();
+      if (!data.book || !data.review.trim()) {
+        return "本と感想を入力すると、X投稿文のプレビューがここに表示されます。";
+      }
+      const reviewLead = splitFirstSentence(data.review);
+      const changeLead = splitFirstSentence(data.change);
+      const changeSentence = changeLead ? `\n読後は、${trimEnding(changeLead)}。` : "";
+      const hashtags = "#読書記録 #読了";
+
+      if (mode === "deep") {
+        return `『${data.book}』を読了。\n\n${reviewLead}${changeSentence}\n\n読む前より少し、${data.mood}感覚が残った。\n\n${hashtags}`;
+      }
+
+      if (mode === "recommend") {
+        return `『${data.book}』を読了。\n\n${data.mood}本だった。\n${reviewLead}\n\n自分の考え方や日々の選び方を見直したい人におすすめ。\n\n#読書記録`;
+      }
+
+      return `『${data.book}』を読了。\n\n${reviewLead}${changeSentence ? `\n${changeSentence}` : ""}\n\n#読書記録`;
+    }
+
+    function updateTweetPreview() {
+      const preview = document.querySelector("#tweetPreview");
+      const count = document.querySelector("#tweetCount");
+      preview.textContent = buildTweet();
+      updateTweetCount();
+    }
+
+    function updateTweetCount() {
+      const preview = document.querySelector("#tweetPreview");
+      const count = document.querySelector("#tweetCount");
+      const length = Array.from(preview.textContent).length;
+      count.textContent = `${length} / 280`;
+      count.classList.toggle("warn", length > 280);
+    }
+
+    document.querySelectorAll(".nav button").forEach((button) => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll(".nav button").forEach((item) => item.classList.remove("active"));
+        document.querySelectorAll(".screen").forEach((screen) => screen.classList.remove("active"));
+        button.classList.add("active");
+        document.querySelector(`#${button.dataset.screen}`).classList.add("active");
+      });
+    });
+
+    document.querySelectorAll("#libraryFilters button").forEach((button) => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll("#libraryFilters button").forEach((item) => item.classList.remove("active"));
+        button.classList.add("active");
+        renderBooks(button.dataset.filter);
+      });
+    });
+
+    document.querySelector("#searchInput").addEventListener("input", () => {
+      const activeFilter = document.querySelector("#libraryFilters button.active")?.dataset.filter || "all";
+      renderBooks(activeFilter);
+    });
+
+    document.querySelector("#notifyBtn").addEventListener("click", () => showToast("新しいコメントが3件あります"));
+    document.querySelector("#saveDraft").addEventListener("click", () => showToast("下書きを保存しました"));
+
+    document.querySelector("#goalForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const goal = saveMonthlyGoal(document.querySelector("#monthlyGoalInput").value);
+      document.querySelector("#monthlyGoalInput").value = goal;
+      renderDashboard();
+      showToast("月間目標を保存しました");
+    });
+
+    const authModal = document.querySelector("#authModal");
+    document.querySelector("#authButton").addEventListener("click", () => {
+      updateAuthUi();
+      authModal.classList.add("active");
+      authModal.setAttribute("aria-hidden", "false");
+    });
+    document.querySelector("#closeAuth").addEventListener("click", () => {
+      authModal.classList.remove("active");
+      authModal.setAttribute("aria-hidden", "true");
+    });
+    authModal.addEventListener("click", (event) => {
+      if (event.target === authModal) {
+        authModal.classList.remove("active");
+        authModal.setAttribute("aria-hidden", "true");
+      }
+    });
+
+    document.querySelector("#supabaseConfigForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const data = new FormData(event.currentTarget);
+      localStorage.setItem(SUPABASE_CONFIG_KEY, JSON.stringify({
+        url: String(data.get("url") || "").trim(),
+        anonKey: String(data.get("anonKey") || "").trim()
+      }));
+      supabaseClient = null;
+      currentSession = null;
+      await initSupabaseAuth();
+      showToast("Supabase設定を保存しました");
+    });
+
+    document.querySelector("#clearSupabaseConfig").addEventListener("click", async () => {
+      localStorage.removeItem(SUPABASE_CONFIG_KEY);
+      supabaseClient = null;
+      currentSession = null;
+      updateAuthUi();
+      showToast("Supabase設定を消しました");
+    });
+
+    document.querySelector("#loginForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const client = getSupabaseClient();
+      if (!client) {
+        showToast("Supabase設定を先に保存してください");
+        updateAuthUi();
+        return;
+      }
+      const email = String(new FormData(event.currentTarget).get("email") || "").trim();
+      if (!email) {
+        showToast("メールアドレスを入力してください");
+        return;
+      }
+      const { error } = await client.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: window.location.href.split("#")[0] }
+      });
+      showToast(error ? "ログインリンクを送れませんでした" : "ログインリンクを送信しました");
+    });
+
+    document.querySelector("#signOutButton").addEventListener("click", async () => {
+      const client = getSupabaseClient();
+      if (client) await client.auth.signOut();
+      currentSession = null;
+      updateAuthUi();
+      showToast("ログアウトしました");
+    });
+
+    document.querySelector("#reviewForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      updateTweetPreview();
+      showToast("X向けの投稿文を作りました");
+    });
+
+    document.querySelectorAll("#reviewForm select, #reviewForm textarea").forEach((field) => {
+      field.addEventListener("input", updateTweetPreview);
+      field.addEventListener("change", () => {
+        if (field.name === "book") syncReviewCover();
+        updateTweetPreview();
+      });
+    });
+
+    document.querySelectorAll("#tweetModes button").forEach((button) => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll("#tweetModes button").forEach((item) => item.classList.remove("active"));
+        button.classList.add("active");
+        tweetMode = button.dataset.mode;
+        updateTweetPreview();
+      });
+    });
+
+    document.querySelector("#tweetPreview").addEventListener("input", updateTweetCount);
+
+    document.querySelector("#copyTweet").addEventListener("click", async () => {
+      const text = document.querySelector("#tweetPreview").textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast("投稿文をコピーしました");
+      } catch {
+        showToast("コピーできない環境です。投稿文を選択してコピーしてください");
+      }
+    });
+
+    document.querySelector("#openTweet").addEventListener("click", () => {
+      const text = document.querySelector("#tweetPreview").textContent;
+      const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
+      window.open(url, "_blank", "noopener,noreferrer");
+    });
+
+    const modal = document.querySelector("#addModal");
+    document.querySelector("#openAdd").addEventListener("click", () => {
+      modal.classList.add("active");
+      modal.setAttribute("aria-hidden", "false");
+      renderCatalog();
+    });
+    document.querySelector("#closeAdd").addEventListener("click", () => {
+      modal.classList.remove("active");
+      modal.setAttribute("aria-hidden", "true");
+    });
+    modal.addEventListener("click", (event) => {
+      if (event.target === modal) {
+        modal.classList.remove("active");
+        modal.setAttribute("aria-hidden", "true");
+      }
+    });
+
+    document.querySelector("#catalogSearch").addEventListener("input", () => {
+      window.clearTimeout(catalogSearchTimer);
+      catalogSearchTimer = window.setTimeout(renderCatalog, 320);
+    });
+    document.querySelector("#catalogList").addEventListener("click", (event) => {
+      const card = event.target.closest("[data-book-id]");
+      if (card) {
+        selectCatalogBook(card.dataset.bookId);
+      }
+    });
+
+    document.querySelector("#addForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const data = new FormData(event.currentTarget);
+      const selected = currentCatalogResults.find((item) => item.id === selectedCatalogBookId) || bookDatabase.find((item) => item.id === selectedCatalogBookId);
+      if (!String(data.get("title") || "").trim()) {
+        showToast("タイトルを入力してください");
+        return;
+      }
+      const newBook = {
+        id: selected?.id || crypto.randomUUID(),
+        title: data.get("title"),
+        author: data.get("author"),
+        genre: data.get("genre"),
+        source: selected?.source || "manual",
+        description: data.get("note"),
+        status: data.get("status"),
+        rating: "未評価",
+        cover: selected?.cover || "https://covers.openlibrary.org/b/isbn/9784022618738-L.jpg",
+        isbn13: selected?.isbn13 || "",
+        isbn10: selected?.isbn10 || ""
+      };
+      const savedBook = await saveBookToSupabase(newBook);
+      books.unshift(savedBook);
+      renderBooks();
+      renderDashboard();
+      renderReviewBookOptions();
+      modal.classList.remove("active");
+      modal.setAttribute("aria-hidden", "true");
+      if (!currentSession) showToast("本棚に追加しました");
+    });
+
+    renderBooks();
+    renderFeed();
+    renderDashboard();
+    renderReviewBookOptions();
+    updateTweetPreview();
+    initSupabaseAuth();
+  </script>
+</body>
+</html>
