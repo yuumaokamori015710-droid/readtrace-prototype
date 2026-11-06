@@ -99,4 +99,10 @@ This section supersedes the earlier pending-Google statements. It does not claim
 - Source verification/icon fix commit `c3e6e87` is on `main`. Pages icon fix commit `34f5976` deployed successfully in Actions run `42236699697` (the Pages deployment stage took about 6.5 minutes).
 - Reloaded the public application after deployment. The real account remained signed in, the synchronization button rendered `lucide-cloud`, and no new warning/error logs appeared after that reload. Saved proof in ignored `outputs/qa/google-login-verified-account.png`.
 - After shared-route testing, changed the test record back to private. The first tab fetched that change from the second tab and removed share controls. A direct anonymous REST request with only the public project key returned HTTP 401.
-- Exactly one test-created real-cloud `こころ` record remains private pending the owner's deletion confirmation. No existing user records or Google identity were deleted, and no guest/demo source was changed. Do not mistake its test rating/date for the owner's actual reading history.
+- The test-created real-cloud `こころ` record was made private after verification, then removed after explicit owner approval on 2026-11-07. No existing user records or Google identity were deleted, and no guest/demo source was changed.
+
+### Approved Test Cleanup (2026-11-07)
+
+- Matched the exact test record route, title, 4.5 rating, private visibility and test dates before deletion. Used the app's edit/delete confirmation flow; no bulk delete or user deletion was performed.
+- Read-only Postgres verification: exact target record count 0, owner's shelf record count 0, account profile still present. The authenticated UI returned to an empty own shelf and displayed the deletion-complete notice.
+- Captured ignored local proof in `outputs/qa/google-test-record-deleted.png`. Existing guest/demo storage was not modified. This was data cleanup only; no runtime code or deployment change was necessary.
