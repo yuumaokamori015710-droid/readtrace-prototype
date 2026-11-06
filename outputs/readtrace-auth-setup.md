@@ -7,7 +7,7 @@
 - プロジェクト: `readtrace` / `jjoqjdfldryeqblpobhh` / 東京 `ap-northeast-1`
 - 作成時の見積もり: USD 0 / 月。将来のプラン変更や使用量まで無料を保証するものではありません。
 - アプリは公開可能なpublishable keyのみを使用。Google Client Secret、service_roleキーはソース・GitHub Pagesに保存しません。
-- Googleプロバイダーは公開設定APIで `false` を確認。`readtrace-config.mjs` の `googleEnabled: false` でログイン開始を止め、準備中と表示します。
+- 調査開始時、Googleプロバイダーは公開設定APIで `false` でした。現在のアプリは実際のプロバイダー設定を起動時・ログイン時に確認し、有効な場合にだけGoogle認証を開始します。フロントエンドのフラグを書き換えただけで完成とは扱いません。
 - 管理画面へのログイン待ちです。管理用ログインと、アプリ利用者のGoogleログインは別物です。
 
 ## 管理画面で残っている設定
@@ -64,7 +64,7 @@ http://localhost:8011/reading-prototype.html
 ## 有効化と確認
 
 1. `/auth/v1/settings` の `external.google` がtrueになったことを確認します。
-2. `readtrace-config.mjs` の `googleEnabled` をtrueにして配信します。サーバーの秘密情報は不要です。
+2. アプリを再読み込みします。実際のプロバイダー設定が自動反映されます。サーバーの秘密情報をフロントへ追加する必要はありません。
 3. 公開URLでGoogleの同意画面を経てログインできること、Supabase Auth Usersに対象ユーザーが存在することを確認します。
 4. 空の自分の棚、再読み込み後のログイン保持、ログアウトを実際に確認します。
 5. ログアウト状態で `#/share/...` を開き、ログイン後にその画面に戻ることを確認します。
@@ -73,7 +73,7 @@ http://localhost:8011/reading-prototype.html
 
 ## 認証と記録の保存を混同しない
 
-Google本人確認の接続コードは実認証ですが、棚・感想・共有・交流はまだブラウザ保存のモックです。Googleユーザーごとに空の別ストレージを作り、デモデータは混ぜません。端末間同期、複数のGoogleユーザー間の公開棚・交流、本番のデータアクセス制御には、別途DBとRLSの実装が必要です。
+現在はGoogleユーザーの棚・感想・交流をSupabase Postgresへ保存する実装とRLSを追加しています。ゲストとデモは別の端末内保存のままです。所有者によるGoogle認証設定と、実アカウントでのログイン・二端末同期の検証がまだ必要です。最新の構成・検証・Google Booksキー設定は `production-status.md` を参照してください。
 
 ## 参照
 

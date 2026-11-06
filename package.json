@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node outputs/reading-prototype-server.mjs",
-    "test": "node --test outputs/readtrace-store.test.mjs outputs/readtrace-auth.test.mjs"
+    "package:books-function": "node scripts/package-readtrace-function.mjs",
+    "test": "node --test outputs/*.test.mjs"
   }
 }

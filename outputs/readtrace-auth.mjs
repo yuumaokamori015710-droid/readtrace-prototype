@@ -1,7 +1,8 @@
 export const RETURN_KEY = "readtrace:oauth-return:v1";
+export const RETURN_CLOUD_KEY = "readtrace:oauth-cloud-return:v1";
 
 export function safeReturnRoute(value) {
-  return /^\/(?:shelf|feed|people|user\/[\w-]+|record\/[\w-]+|share\/[\w-]+\/(?:book|movie)\/(?:done|want))$/.test(value || "")
+  return /^\/(?:shelf|discover|feed|people|user\/[\w-]+|record\/[\w-]+|share\/[\w-]+\/(?:book|movie)\/(?:done|want))$/.test(value || "")
     ? value : "/shelf";
 }
 
@@ -40,7 +41,7 @@ export function emptyAccountData(identity) {
   };
 }
 
-export function createAuth({ config, storage, location, replaceUrl, createClient, onChange = () => {} }) {
+export function createAuth({ config, storage, location, replaceUrl, createClient, checkProvider, onChange = () => {} }) {
   const configured = /^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/.test(config.url || "") && Boolean(config.publishableKey);
   let client, initialization, generation = 0;
   let state = { ready: false, configured: configured && config.googleEnabled === true, googleEnabled: configured && config.googleEnabled === true, user: null, busy: false, error: "" };
@@ -57,6 +58,7 @@ export function createAuth({ config, storage, location, replaceUrl, createClient
     publish({ user: data.user || null, error: "" });
   };
   return {
+    get client() { return client; },
     get state() { return state; },
     init() {
       if (initialization) return initialization;
@@ -73,6 +75,7 @@ export function createAuth({ config, storage, location, replaceUrl, createClient
           if (code || callbackError) {
             const target = new URL(cleanCallbackUrl(url.href));
             target.hash = safeReturnRoute(storage.getItem(RETURN_KEY) || url.hash.slice(1));
+            if (storage.getItem(RETURN_CLOUD_KEY) === "1") target.searchParams.set("cloud", "1");
             replaceUrl(target.href);
           }
           if (callbackError) throw { code: callbackError };
@@ -83,9 +86,14 @@ export function createAuth({ config, storage, location, replaceUrl, createClient
           const { data, error } = await client.auth.getSession();
           if (error) throw error;
           if (data.session) await verify();
+          if (checkProvider) {
+            try { const enabled = await checkProvider(); publish({ configured: enabled, googleEnabled: enabled }); }
+            catch { publish({ error: "Google認証の設定を確認できませんでした。接続を確認して再試行してください。" }); }
+          }
           if (code && state.user) {
             const destination = safeReturnRoute(storage.getItem(RETURN_KEY));
             storage.removeItem(RETURN_KEY);
+            storage.removeItem(RETURN_CLOUD_KEY);
             const target = new URL(location.href);
             target.hash = destination;
             replaceUrl(target.href);
@@ -101,11 +109,16 @@ export function createAuth({ config, storage, location, replaceUrl, createClient
       return initialization;
     },
     async signIn(route) {
-      if (!client || !state.googleEnabled) throw new Error("Googleログインの接続設定を準備中です。デモは引き続き利用できます。");
+      if (!client) throw new Error("Googleログインの接続設定を準備中です。ゲストでは引き続き利用できます。");
       if (state.busy) return;
       publish({ busy: true, error: "" });
       try {
+        const enabled = checkProvider ? await checkProvider() : state.googleEnabled;
+        publish({ configured: enabled, googleEnabled: enabled });
+        if (!enabled) throw { code: "unsupported_provider" };
         storage.setItem(RETURN_KEY, safeReturnRoute(route));
+        if (new URL(location.href).searchParams.get("cloud") === "1") storage.setItem(RETURN_CLOUD_KEY, "1");
+        else storage.removeItem(RETURN_CLOUD_KEY);
         const { error } = await client.auth.signInWithOAuth({ provider: "google", options: { redirectTo: callbackUrl(location.href), queryParams: { prompt: "select_account" } } });
         if (error) throw error;
       } catch (error) { publish({ busy: false, error: authError(error) }); }

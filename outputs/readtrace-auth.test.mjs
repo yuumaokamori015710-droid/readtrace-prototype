@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createAuth, callbackUrl, cleanCallbackUrl, safeReturnRoute, emptyAccountData, RETURN_KEY } from "./readtrace-auth.mjs";
+import { createAuth, callbackUrl, cleanCallbackUrl, safeReturnRoute, emptyAccountData, RETURN_KEY, RETURN_CLOUD_KEY } from "./readtrace-auth.mjs";
 import { createStore } from "./readtrace-store.mjs";
 
 const memory = () => {
@@ -8,7 +8,7 @@ const memory = () => {
   return { getItem: (key) => values.get(key) || null, setItem: (key, value) => values.set(key, value), removeItem: (key) => values.delete(key) };
 };
 const identity = { id: "6ad90999-152a-4b63-9da2-5217210a07e1", user_metadata: { full_name: "テスト読者" } };
-function setup({ href = "https://example.github.io/readtrace/reading-prototype.html", session = null, userError = null, exchangeError = null, loginError = null, config } = {}) {
+function setup({ href = "https://example.github.io/readtrace/reading-prototype.html", session = null, userError = null, exchangeError = null, loginError = null, config, checkProvider } = {}) {
   const storage = memory(), calls = [], location = { href };
   let listener;
   const client = { auth: {
@@ -21,7 +21,7 @@ function setup({ href = "https://example.github.io/readtrace/reading-prototype.h
   } };
   const auth = createAuth({
     config: config || { url: "https://testproject.supabase.co", publishableKey: "sb_publishable_example", googleEnabled: true },
-    storage, location, replaceUrl: (value) => { location.href = value; },
+    storage, location, checkProvider, replaceUrl: (value) => { location.href = value; },
     createClient: async (url, key, options) => { calls.push(options); return client; },
   });
   return { auth, calls, location, storage, event: (name) => listener(name) };
@@ -78,6 +78,18 @@ test("cancelled login keeps original destination, hides provider messages", asyn
   assert.equal(new URL(location.href).hash, "#/record/abc");
   assert.equal(auth.state.user, null);
 });
+
+test("cloud share marker survives an OAuth callback or cancellation", async () => {
+  const login = setup({ href: "https://example.com/app?cloud=1#/record/abc" });
+  await login.auth.init(); await login.auth.signIn("/record/abc");
+  assert.equal(login.storage.getItem(RETURN_CLOUD_KEY), "1");
+  const callback = setup({ href: "https://example.com/app?code=verified" });
+  callback.storage.setItem(RETURN_KEY, "/record/abc"); callback.storage.setItem(RETURN_CLOUD_KEY, "1");
+  await callback.auth.init();
+  assert.equal(new URL(callback.location.href).searchParams.get("cloud"), "1");
+  assert.equal(new URL(callback.location.href).hash, "#/record/abc");
+  assert.equal(callback.storage.getItem(RETURN_CLOUD_KEY), null);
+});
 test("expired PKCE code is not accepted as an authenticated session", async () => {
   const { auth, location } = setup({ href: "https://example.com/app?code=old", exchangeError: { code: "flow_state_expired" } });
   await auth.init();
@@ -129,4 +141,12 @@ test("Google accounts have separate empty shelves, not selectable demo identitie
   const b = createStore(storage, { key: "account:other", seed: () => emptyAccountData(second) });
   assert.equal(b.data.records.length, 0);
   assert.equal(createStore(storage, { key: `account:${identity.id}`, seed: () => emptyAccountData(identity) }).data.records.length, 1);
+});
+test("real provider configuration is rechecked without republishing a fake enabled flag", async () => {
+  let enabled = false;
+  const { auth, calls } = setup({ config: { url: "https://testproject.supabase.co", publishableKey: "public", googleEnabled: false }, checkProvider: async () => enabled });
+  await auth.init(); await auth.signIn("/discover");
+  assert.equal(auth.state.googleEnabled, false); assert.match(auth.state.error, /有効になっていません/);
+  enabled = true; await auth.signIn("/discover");
+  assert.equal(auth.state.googleEnabled, true); assert.equal(calls.some((call) => call?.provider === "google"), true);
 });

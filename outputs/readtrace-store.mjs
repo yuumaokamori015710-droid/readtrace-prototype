@@ -1,4 +1,5 @@
 import { seedData } from "./readtrace-data.mjs";
+import { workIdentity } from "./readtrace-books.mjs";
 export const STORAGE_KEY = "readtrace:books-films:v2";
 export const SESSION_KEY = "readtrace:demo-session:v2";
 export const labels = {
@@ -27,12 +28,10 @@ export function validateRecord(record) {
     return "評価は0.5〜5の範囲で選んでください。";
   if (record.status === "done" && record.rating === null)
     return "読了・鑑賞済みの記録には評価を選んでください。";
-  if (
-    record.completedAt &&
-    (!/^\d{4}-\d{2}-\d{2}$/.test(record.completedAt) ||
-      Number.isNaN(Date.parse(record.completedAt)))
-  )
-    return "日付を確認してください。";
+  for (const value of [record.startedAt, record.completedAt]) {
+    if (value && (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value)) return "日付を確認してください。";
+  }
+  if (record.startedAt && record.completedAt && record.startedAt > record.completedAt) return "開始日は完了日以前にしてください。";
   if (!["public", "private"].includes(record.visibility))
     return "公開範囲を選んでください。";
   return "";
@@ -74,10 +73,9 @@ export function createStore(storage, { key = STORAGE_KEY, seed = seedData } = {}
       const error = validateRecord(record);
       if (error) throw new Error(error);
       if (
-        !existing &&
         record.work.id &&
         data.records.some(
-          (r) => r.userId === viewer && r.work.id === record.work.id,
+          (r) => r.id !== existing?.id && r.userId === viewer && workIdentity(r.work) === workIdentity(record.work),
         )
       )
         throw new Error("この作品はすでに棚にあります。");
@@ -87,6 +85,7 @@ export function createStore(storage, { key = STORAGE_KEY, seed = seedData } = {}
         userId: viewer,
         work: { ...record.work, title: record.work.title.trim() },
         createdAt: existing?.createdAt || new Date().toISOString(),
+        history: [...(existing?.history || []), ...(!existing || existing.status !== record.status ? [{ status: record.status, rating: record.rating, at: new Date().toISOString() }] : [])],
       };
       data.records = existing
         ? data.records.map((r) => (r.id === item.id ? item : r))
