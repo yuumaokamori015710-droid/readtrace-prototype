@@ -8,11 +8,15 @@ import {
 import { createCoverOrbit } from "./readtrace-orbit.mjs";
 import { authConfig } from "./readtrace-config.mjs";
 import { createAuth, emptyAccountData } from "./readtrace-auth.mjs";
+import { createBookClient, discoverySections, mergeBooks, workIdentity, canonicalIsbn } from "./readtrace-books.mjs";
+import { createCloudStore } from "./readtrace-cloud.mjs";
 
 const app = document.querySelector("#app");
 const modal = document.querySelector("#modal");
 const demoStore = createStore(localStorage);
 demoStore.persist();
+const guestStore = createStore(localStorage, { key: "readtrace:guest:v1", seed: () => emptyAccountData({ id: "guest", user_metadata: { name: "ゲスト" } }) });
+guestStore.persist();
 let store = demoStore;
 let viewer = "";
 let authState = { ready: false, configured: false, user: null, busy: false, error: "" };
@@ -23,9 +27,16 @@ let searchType = "book",
   authMode = "login";
 let toastTimer, lastFocus;
 const mobileShelf = matchMedia('(max-width: 800px)');
-let shelfView = localStorage.getItem('readtrace:shelf-view:v1') || 'orbit';
+let shelfView = localStorage.getItem('readtrace:shelf-view:v1') || 'grid';
 let orbitController = null;
 const revealed = new Set();
+const books = createBookClient({ endpoint: `${authConfig.url}/functions/v1/readtrace-books`, publishableKey: authConfig.publishableKey });
+const works = new Map(catalog.map((work) => [work.id, work]));
+const discoveryCache = new Map();
+let searchField = "all", searchOrder = "relevance", searchPage = 1, searchResults = [], searchMore = false;
+let searchController, searchTimer, searchVersion = 0, discoveryObserver;
+let discoveryQueue = Promise.resolve();
+let cloudLoading = false, cloudFailure = "", syncState = "ready", accountVersion = 0;
 const $ = (selector) => document.querySelector(selector);
 const esc = (value) =>
   String(value ?? "").replace(
@@ -41,6 +52,7 @@ const icon = (name) => ["book-open", "clapperboard"].includes(name)
 const user = (id) => store.data.users.find((u) => u.id === id);
 const mine = () => user(viewer);
 const route = () => location.hash.slice(1) || "/shelf";
+const needsCloudLogin = () => !authState.user && new URL(location.href).searchParams.get("cloud") === "1" && /^\/(?:record|share|user)\//.test(route());
 const date = (value) =>
   value
     ? new Intl.DateTimeFormat("ja-JP", {
@@ -67,7 +79,7 @@ function googleLoginButton() {
   </button>${authState.busy ? '<span class="google-login-status" role="status">Googleへ移動しています…</span>' : ""}`;
 }
 const avatar = (u) =>
-  `<span class="avatar" style="--avatar:${u.color}" aria-hidden="true">${esc(u.initial)}</span>`;
+  `<span class="avatar" style="--avatar:${u.color}" aria-hidden="true">${esc(u.initial)}${u.avatarUrl ? `<img src="${esc(u.avatarUrl)}" alt="" referrerpolicy="no-referrer">` : ""}</span>`;
 function icons() {
   window.lucide?.createIcons({ attrs: { "aria-hidden": "true" } });
 }
@@ -84,8 +96,8 @@ function navigate(path) {
 }
 function setSession(id) {
   if (authState.user) return;
-  if (id && !demoStore.data.users.some((u) => u.id === id)) return;
-  store = demoStore;
+  if (id && id !== "guest" && !demoStore.data.users.some((u) => u.id === id)) return;
+  store = id === "guest" ? guestStore : demoStore;
   viewer = id;
   id
     ? localStorage.setItem(SESSION_KEY, id)
@@ -154,6 +166,9 @@ function showModal(title, content) {
   icons();
 }
 function closeModal() {
+  searchController?.abort();
+  clearTimeout(searchTimer);
+  searchVersion++;
   if (modal.open) modal.close();
   lastFocus?.isConnected && lastFocus.focus();
 }
@@ -173,6 +188,9 @@ modal.addEventListener("click", (event) => {
 function authScreen() {
   const returning = route() !== "/shelf";
   app.innerHTML = `<main class="auth-page" id="main"><section class="auth-art"><a class="brand" href="#/shelf">${icon("book-open")}ReadTrace</a><h1>本と映画、そのあとに<br>残るもの。</h1><p>読みたい一冊も、忘れたくない一本も。<br>自分だけの棚に、少しずつ。</p><div class="auth-covers">${cover(catalog[2])}${cover(catalog[32])}${cover(catalog[0])}</div></section><section class="auth-form"><span class="eyebrow">YOUR READING & CINEMA</span><h2>あなたの棚へ</h2><p>初めての方も、Googleアカウントで始められます。</p>${returning ? '<p class="auth-return">ログイン後に、開こうとしたページへ戻ります。</p>' : ""}${googleLoginButton()}<div id="auth-error" class="error" role="alert">${esc(authState.error)}</div>${!authState.configured ? '<p class="auth-note">Googleログインは接続設定の準備中です。</p>' : ""}<p class="auth-note">Googleのパスワードを、このアプリに入力する必要はありません。記録は現在、このブラウザ内に保存されます。</p><details class="demo-options" ${authMode === "register" ? "open" : ""}><summary>デモを試す</summary><span class="demo-label">DEMO / パスワード不要</span>${authMode === "login" ? `<div class="demo-users">${demoStore.data.users.map((u) => `<button class="demo-user" data-action="login" data-id="${u.id}">${avatar(u)}<span><strong>${esc(u.name)}</strong><small>このブラウザだけのデモユーザー</small></span>${icon("arrow-right")}</button>`).join("")}</div>${action("auth-register", "デモ用の棚をつくる " + icon("arrow-right"), "", "text-btn")}` : `<form id="register-form" class="register-form" novalidate><label>デモの表示名 <span class="muted">必須</span><input name="name" required maxlength="30" autocomplete="nickname" placeholder="あなたの名前"></label><div id="register-error" class="error" role="alert"></div><button class="btn primary" type="submit">デモを始める ${icon("arrow-right")}</button>${action("auth-login", "デモユーザーを選ぶ", "", "text-btn")}</form>`}</details></section></main>`;
+  $(".auth-form > p.auth-note:last-of-type").textContent = "Googleログイン後の記録はクラウドに保存されます。ゲストの記録はこのブラウザ内に保存されます。";
+  if (!needsCloudLogin()) $(".auth-form .google-login").insertAdjacentHTML("afterend", action("guest-login", "ゲストで始める", "", "btn guest-login"));
+  else $(".demo-options").hidden = true;
 }
 function navItem(path, title, glyph) {
   return `<a href="#${path}" class="${route().startsWith(path) ? "active" : ""}" ${route().startsWith(path) ? 'aria-current="page"' : ""}>${icon(glyph)}<span>${title}</span></a>`;
@@ -197,10 +215,12 @@ function shell(content) {
           <a href="#/shelf" class="brand">${icon("book-open")}<span>ReadTrace</span></a>
           <nav class="nav" aria-label="メインナビゲーション">
             ${navItem("/shelf", "自分の棚", "library")}
+            ${navItem("/discover", "本を探す", "compass")}
             ${navItem("/feed", "みんなの記録", "notebook-pen")}
             ${navItem("/people", "ユーザーを探す", "users")}
           </nav>
           <div class="topbar-right">
+            ${authState.user ? action("cloud-refresh", icon(syncState === "error" ? "cloud-off" : "cloud-check"), `aria-label="${syncState === "error" ? "接続を確認して再同期" : "クラウドを再読み込み"}" title="${syncState === "syncing" ? "同期中" : syncState === "error" ? "接続を確認して再同期" : "クラウド保存"}"`, "icon-btn cloud-status") : `<span class="local-mode">${viewer === "guest" ? "ゲスト" : "デモ"}・端末内保存</span>`}
             ${action("add", icon("plus") + "作品を追加", "", "btn primary desktop-add")}
             <button class="header-account" data-action="account" aria-label="アカウント" title="${esc(mine().name)}のアカウント">${avatar(mine())}</button>
           </div>
@@ -211,7 +231,7 @@ function shell(content) {
         ${navItem("/shelf", "本棚", "library")}
         ${navItem("/feed", "みんな", "notebook-pen")}
         ${action("add", icon("plus"), '', "mobile-add")}
-        ${navItem("/people", "ユーザー", "users")}
+        ${navItem("/discover", "さがす", "compass")}
         <button data-action="account" aria-label="アカウント">${icon("circle-user-round")}<span>自分</span></button>
       </nav>
     </div>`;
@@ -254,6 +274,8 @@ function filteredRecords() {
   let records = shelfRecords().filter(
     (r) =>
       (view.filter === "all" || r.status === view.filter) &&
+      (!view.ratingFilter || view.ratingFilter === "all" || (view.ratingFilter === "unrated" ? r.rating === null : (r.rating ?? 0) >= Number(view.ratingFilter))) &&
+      (!view.addedAfter || new Date(r.createdAt) >= new Date(`${view.addedAfter}T00:00:00`)) &&
       `${r.work.title} ${r.work.creator}`
         .toLocaleLowerCase()
         .includes(view.query.toLocaleLowerCase()),
@@ -263,7 +285,7 @@ function filteredRecords() {
       ? (b.rating ?? -1) - (a.rating ?? -1)
       : view.sort === "completed"
         ? (b.completedAt || "").localeCompare(a.completedAt || "")
-        : b.createdAt.localeCompare(a.createdAt),
+        : view.sort === "oldest" ? a.createdAt.localeCompare(b.createdAt) : b.createdAt.localeCompare(a.createdAt),
   );
 }
 function renderShelfGrid() {
@@ -282,12 +304,12 @@ function renderShelfGrid() {
             ? "読みたい一冊、観たい一本から、棚を育ててみませんか。"
             : "公開された作品が追加されると、ここに並びます。",
         own
-          ? action("add", icon("plus") + "作品を追加", "", "btn primary")
+          ? action("add", icon("plus") + "作品を追加", "", "btn primary") + (c.type === "book" ? '<a href="#/discover" class="btn">本を見つける</a>' : "")
           : "",
       );
   $("#result-count").textContent = `${records.length}作品`;
   const opening = $("#shelf-opening");
-  if (opening) opening.hidden = view.filter !== "all" || Boolean(view.query);
+  if (opening) opening.hidden = view.filter !== "all" || Boolean(view.query) || Boolean(view.addedAfter) || Boolean(view.ratingFilter && view.ratingFilter !== "all");
   renderMobileShelf(records);
   icons();
 }
@@ -456,7 +478,7 @@ function detailScreen(id) {
     );
   const u = user(r.userId),
     own = r.userId === viewer;
-  return `<a class="text-btn" href="#${own ? "/shelf" : `/user/${u.id}`}">${icon("arrow-left")} ${own ? "自分の棚へ" : esc(u.name) + "さんの棚へ"}</a><div class="detail-layout"><div class="detail-art">${cover(r.work)}</div><article class="detail-head"><div>${statusBadge(r)} ${r.visibility === "private" ? '<span class="badge">' + icon("lock-keyhole") + "非公開</span>" : ""}</div><h1>${esc(r.work.title)}</h1><p class="creator">${esc(r.work.creator || "著者・監督未設定")}${r.work.year ? " / " + r.work.year : ""}</p>${stars(r.rating)}<div class="detail-owner"><a class="row" href="#/user/${u.id}">${avatar(u)}${esc(u.name)}</a><span class="muted">${r.completedAt ? date(r.completedAt) + (r.work.type === "book" ? " 読了" : " 鑑賞") : labels[r.work.type][r.status]}</span></div>${review(r)}${socialButtons(r)}<div class="detail-commands">${own ? action("edit", icon("pencil") + "記録を編集", `data-id="${r.id}"`, "btn primary") : action("save-work", icon("plus") + "自分の棚に追加", `data-id="${r.id}"`, "btn")}${r.visibility === "public" ? action("share-record", icon("link") + "共有URL", `data-id="${r.id}"`) : own ? '<span class="muted field-hint">非公開の記録は共有できません。</span>' : ""}</div>${socialRecord(r) ? comments(r) : ""}</article></div>`;
+  return `<a class="text-btn" href="#${own ? "/shelf" : `/user/${u.id}`}">${icon("arrow-left")} ${own ? "自分の棚へ" : esc(u.name) + "さんの棚へ"}</a><div class="detail-layout"><div class="detail-art">${cover(r.work)}</div><article class="detail-head"><div>${statusBadge(r)} ${r.visibility === "private" ? '<span class="badge">' + icon("lock-keyhole") + "非公開</span>" : ""}</div><h1>${esc(r.work.title)}</h1><p class="creator">${esc(r.work.creator || "著者・監督未設定")}${r.work.year ? " / " + esc(r.work.year) : ""}</p>${stars(r.rating)}<div class="detail-owner"><a class="row" href="#/user/${u.id}">${avatar(u)}${esc(u.name)}</a><span class="muted">${r.completedAt ? date(r.completedAt) + (r.work.type === "book" ? " 読了" : " 鑑賞") : labels[r.work.type][r.status]}</span></div>${review(r)}${socialButtons(r)}<div class="detail-commands">${own ? action("edit", icon("pencil") + "記録を編集", `data-id="${r.id}"`, "btn primary") : action("save-work", icon("plus") + "自分の棚に追加", `data-id="${r.id}"`, "btn")}${r.visibility === "public" ? action("share-record", icon("link") + "共有URL", `data-id="${r.id}"`) : own ? '<span class="muted field-hint">非公開の記録は共有できません。</span>' : ""}</div>${socialRecord(r) ? comments(r) : ""}</article></div>`;
 }
 function comments(r) {
   const list = store.data.comments.filter((c) => c.recordId === r.id);
@@ -475,6 +497,7 @@ function comments(r) {
   }</section>`;
 }
 function render() {
+  discoveryObserver?.disconnect();
   orbitController?.dispose();
   orbitController = null;
   document.documentElement.dataset.shelfView = 'grid';
@@ -485,16 +508,19 @@ function render() {
     app.innerHTML = '<main id="main" class="auth-loading" role="status">ログイン状態を確認しています…</main>';
     return;
   }
-  if (!viewer) {
+  if (!viewer || needsCloudLogin()) {
     authScreen();
     icons();
     return;
   }
+  if (cloudLoading) { app.innerHTML = `<main id="main" class="cloud-loading"><p role="status">あなたの棚を読み込んでいます…</p>${skeletons()}</main>`; return; }
+  if (cloudFailure) { app.innerHTML = `<main id="main" class="cloud-loading"><h1>棚を読み込めませんでした</h1><p class="error" role="alert">${esc(cloudFailure)}</p>${action("cloud-retry", icon("refresh-cw") + "再読み込み")}${action("logout", icon("log-out") + "ログアウト")}</main>`; icons(); return; }
   const p = route().split("/");
   let content;
   if (["shelf", "user", "share"].includes(p[1])) content = shelfScreen();
   else if (p[1] === "feed") content = feedScreen();
   else if (p[1] === "people") content = peopleScreen();
+  else if (p[1] === "discover") content = discoverScreen();
   else if (p[1] === "record") content = detailScreen(p[2]);
   else
     content = empty(
@@ -503,57 +529,120 @@ function render() {
       '<a class="btn" href="#/shelf">自分の棚へ</a>',
     );
   shell(content);
-  if ($("#shelf-grid")) renderShelfGrid();
+  if (p[1] === "record") {
+    const record = store.get(p[2], viewer);
+    if (record && $(".detail-head")) {
+      if (record.startedAt) $(".detail-owner").insertAdjacentHTML("afterend", `<p class="field-hint">${record.work.type === "book" ? "読書" : "鑑賞"}開始日 ${esc(record.startedAt)}</p>`);
+      if (record.work.publisher || record.work.isbn13) $(".detail-head .creator").insertAdjacentHTML("afterend", `<p class="field-hint">${esc([record.work.publisher, record.work.publishedAt, record.work.isbn13 ? `ISBN ${record.work.isbn13}` : ""].filter(Boolean).join(" / "))}</p>`);
+    }
+  }
+  if ($("#shelf-grid")) {
+    $(".shelf-tools").insertAdjacentHTML("afterend", `<div class="shelf-extra-filters"><label>評価<select id="rating-filter"><option value="all">すべて</option><option value="unrated">未評価</option>${[1, 2, 3, 4, 4.5, 5].map((n) => `<option value="${n}" ${String(view.ratingFilter) === String(n) ? "selected" : ""}>${n}以上</option>`).join("")}</select></label><label>登録日以降<input id="added-after" type="date" value="${esc(view.addedAfter || "")}"></label>${action("reset-shelf-filters", icon("filter-x"), 'aria-label="絞り込みを解除" title="絞り込みを解除"', "icon-btn")}</div>`);
+    $("#rating-filter").value = view.ratingFilter || "all";
+    $("#shelf-sort").insertAdjacentHTML("beforeend", `<option value="oldest" ${view.sort === "oldest" ? "selected" : ""}>登録が古い順</option>`);
+    renderShelfGrid();
+  }
+  if (p[1] === "discover") hydrateDiscovery();
   icons();
 }
-window.addEventListener("hashchange", () => {
+window.addEventListener("hashchange", async () => {
   view.filter = "all";
   view.query = "";
   revealed.clear();
   closeModal();
+  const path = route(), current = store;
+  if (current.mode === "cloud") {
+    try { await current.ensureRoute(path); } catch (error) { toast(error.message); }
+    if (route() !== path || store !== current) return;
+  }
   render();
   window.scrollTo(0, 0);
 });
 window.addEventListener("storage", (e) => {
-  if (e.key === SESSION_KEY) location.reload();
+  if (e.key === SESSION_KEY && !authState.user) location.reload();
 });
+window.addEventListener("focus", () => { if (store.mode === "cloud") void store.refresh().catch(() => {}); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden && store.mode === "cloud") void store.refresh().catch(() => {}); });
 
 function openSearch(reset = true) {
   if (reset) {
     searchType = view.type;
     searchQuery = "";
+    searchField = "all";
+    searchOrder = "relevance";
   }
+  searchController?.abort();
+  clearTimeout(searchTimer);
+  searchVersion++;
   showModal(
     "作品を探す",
-    `<div class="search-type" role="group" aria-label="検索する作品の種別">${["book", "movie"].map((t) => action("search-type", icon(t === "book" ? "book-open" : "clapperboard") + (t === "book" ? "本を探す" : "映画を探す"), `data-type="${t}" aria-pressed="${searchType === t}"`, searchType === t ? "btn active" : "btn")).join("")}</div><label class="catalog-input">${icon("search")}<input id="catalog-search" type="search" placeholder="${searchType === "book" ? "本のタイトル・著者" : "映画のタイトル・監督"}" aria-label="作品を検索" value="${esc(searchQuery)}" autocomplete="off"></label><p class="catalog-info" id="catalog-info"></p><div class="catalog-results" id="catalog-results"></div><div class="manual-link"><span>見つからない作品も、自分の棚へ。</span>${action("manual", "手入力で追加 " + icon("arrow-right"), "", "text-btn")}</div>`,
+    `<div class="search-type" role="group" aria-label="検索する作品の種別">${["book", "movie"].map((t) => action("search-type", icon(t === "book" ? "book-open" : "clapperboard") + (t === "book" ? "本を探す" : "映画を探す"), `data-type="${t}" aria-pressed="${searchType === t}"`, searchType === t ? "btn active" : "btn")).join("")}</div>${searchType === "book" ? `<label class="search-field-label">検索対象<select id="catalog-field"><option value="all" ${searchField === "all" ? "selected" : ""}>書名・著者・ISBN</option><option value="title" ${searchField === "title" ? "selected" : ""}>書名</option><option value="author" ${searchField === "author" ? "selected" : ""}>著者</option><option value="isbn" ${searchField === "isbn" ? "selected" : ""}>ISBN</option></select></label>` : ""}<label class="catalog-input">${icon("search")}<input id="catalog-search" type="search" placeholder="${searchType === "book" ? "書名・著者名・ISBN" : "映画のタイトル・監督"}" aria-label="作品を検索" value="${esc(searchQuery)}" autocomplete="off" maxlength="160"></label><p class="catalog-info" id="catalog-info" role="status"></p><div class="catalog-results" id="catalog-results"></div><div id="catalog-pagination"></div><div class="manual-link"><span>見つからない作品も、自分の棚へ。</span>${action("manual", "手入力で追加 " + icon("arrow-right"), "", "text-btn")}</div>`,
   );
-  renderCatalog();
+  void renderCatalog();
   modal.dataset.media = searchType;
   $("#catalog-search").focus();
 }
-function renderCatalog() {
-  const results = catalog.filter(
-    (w) =>
-      w.type === searchType &&
-      `${w.title} ${w.creator}`
-        .toLocaleLowerCase()
-        .includes(searchQuery.toLocaleLowerCase()),
-  );
-  $("#catalog-info").textContent =
-    `サンプル作品 ${results.length}件${searchQuery ? "" : " · タイトルや著者・監督で検索できます"}`;
-  $("#catalog-results").innerHTML = results.length
-    ? results
-        .map(
-          (w) =>
-            `<button class="catalog-item" data-action="select-work" data-id="${w.id}">${cover(w)}<span><strong>${esc(w.title)}</strong><small>${esc(w.creator)} ${w.year || ""}</small></span>${icon("plus")}</button>`,
-        )
-        .join("")
-    : empty(
-        "作品が見つかりません",
-        `「${esc(searchQuery)}」を引き継いで手入力できます。`,
-        action("manual", "このタイトルで手入力", "", "btn primary"),
-      );
-  icons();
+const skeletons = (count = 5) => `<div class="search-skeleton" aria-label="検索中">${Array.from({ length: count }, () => '<div class="skeleton-item"><span></span><i></i></div>').join("")}</div>`;
+function catalogRows() {
+  $("#catalog-results").innerHTML = searchResults.map((w) => `<button class="catalog-item" data-action="work-detail" data-id="${esc(w.id)}">${cover(w)}<span><strong>${esc(w.title)}</strong><small>${esc(w.creator || "著者・監督未設定")}</small><small>${esc([w.publisher, w.publishedAt || w.year].filter(Boolean).join(" / "))}</small></span>${icon("chevron-right")}</button>`).join("");
+}
+async function renderCatalog(append = false) {
+  searchController?.abort();
+  searchController = new AbortController();
+  const version = ++searchVersion, type = searchType;
+  if (!$("#catalog-results")) return;
+  if (!append) { searchPage = 1; searchResults = []; $("#catalog-results").innerHTML = skeletons(); }
+  $("#catalog-info").textContent = "作品を探しています…";
+  $("#catalog-pagination").innerHTML = "";
+  try {
+    let result;
+    if (type === "book") result = await books.search({ query: searchQuery.trim() || "小説", field: searchField, order: searchOrder, page: searchPage, signal: searchController.signal });
+    else result = await books.search({ type: "movie", query: searchQuery.trim() || "映画", signal: searchController.signal });
+    if (version !== searchVersion || !$("#catalog-results")) return;
+    searchResults = mergeBooks(append ? searchResults : [], result.items);
+    searchMore = result.hasMore;
+    searchResults.forEach((w) => works.set(w.id, w));
+    $("#catalog-info").textContent = `${searchResults.length}件 / ${result.sources.join("・")}${result.warnings.length ? `。${result.warnings.join(" ")}` : ""}`;
+    if (searchResults.length) catalogRows();
+    else $("#catalog-results").innerHTML = empty("作品が見つかりません", `「${esc(searchQuery)}」を引き継いで手入力できます。`, action("manual", "このタイトルで手入力", "", "btn primary"));
+    if (searchMore) $("#catalog-pagination").innerHTML = action("search-more", icon("plus") + "さらに読み込む", "", "btn load-more");
+    icons();
+  } catch (error) {
+    if (version !== searchVersion || !$("#catalog-results")) return;
+    $("#catalog-info").textContent = "";
+    if (!append) $("#catalog-results").innerHTML = "";
+    $("#catalog-pagination").innerHTML = `<div class="error" role="alert">${esc(error.message)}</div>${action("search-retry", icon("refresh-cw") + "再検索")}`;
+    if (append) searchPage--;
+    icons();
+  }
+}
+function openWorkDetail(work) {
+  if (!work) return;
+  showModal(work.type === "book" ? "本の詳細" : "映画の詳細", `<div class="work-preview work-bibliography">${cover(work)}<div><h3>${esc(work.title)}</h3><p>${esc(work.creator || "著者・監督未設定")}</p><p class="muted">${esc([work.publisher, work.publishedAt || work.year].filter(Boolean).join(" / "))}</p>${work.isbn13 ? `<p class="field-hint">ISBN ${esc(work.isbn13)}</p>` : ""}</div></div><p class="book-description">${esc(work.description || "概要は提供されていません。")}</p>${work.sourceUrl ? `<a class="text-btn" href="${esc(work.sourceUrl)}" target="_blank" rel="noopener noreferrer">${esc(work.source)} ${icon("external-link")}</a>` : ""}<div class="dialog-actions">${action("select-work", icon("plus") + "自分の棚に追加", `data-id="${esc(work.id)}"`, "btn primary")}</div>`);
+  modal.dataset.media = work.type;
+}
+function discoverScreen() {
+  return `<div class="page-title"><div><p class="kicker">DISCOVER</p><h1>次に読みたい、一冊。</h1></div>${action("search-books", icon("search") + "本を検索", "", "btn primary")}</div>${discoverySections.map((section) => `<section class="discovery-section" data-discovery="${section.id}"><div class="section-heading"><h2>${section.title}</h2>${action("discover-more", "もっと見る " + icon("arrow-right"), `data-section="${section.id}"`, "text-btn")}</div><div class="discovery-rail" id="discovery-${section.id}">${Array.from({ length: 6 }, () => '<div class="discovery-skeleton" aria-hidden="true"></div>').join("")}</div></section>`).join("")}`;
+}
+function hydrateDiscovery() {
+  discoveryObserver = new IntersectionObserver((entries) => entries.forEach((entry) => {
+    if (!entry.isIntersecting) return;
+    discoveryObserver.unobserve(entry.target);
+    const section = discoverySections.find((s) => s.id === entry.target.dataset.discovery);
+    discoveryQueue = discoveryQueue.then(async () => {
+      const target = $(`#discovery-${section.id}`);
+      if (!target) return;
+      try {
+        const result = discoveryCache.get(section.id) || await books.search({ query: section.query, order: section.order || "relevance", page: 1 });
+        discoveryCache.set(section.id, result);
+        if (!target.isConnected) return;
+        result.items.forEach((w) => works.set(w.id, w));
+        target.innerHTML = result.items.length ? result.items.slice(0, 8).map((w) => `<button class="discovery-book" data-action="work-detail" data-id="${esc(w.id)}">${cover(w)}<strong>${esc(w.title)}</strong><small>${esc(w.creator)}</small></button>`).join("") : '<p class="muted">この条件では本が見つかりませんでした。</p>';
+      } catch { if (target.isConnected) target.innerHTML = `<div class="discovery-error"><p>書誌データを取得できませんでした。</p>${action("discover-retry", icon("refresh-cw") + "再試行", `data-section="${section.id}"`)}</div>`; }
+      icons();
+    });
+  }), { rootMargin: "180px" });
+  document.querySelectorAll("[data-discovery]").forEach((node) => discoveryObserver.observe(node));
 }
 function openEditor(work, record = null, manual = false) {
   editing = { work: { ...work }, record, manual };
@@ -579,6 +668,8 @@ function openEditor(work, record = null, manual = false) {
       )}</select></label><fieldset class="wide"><legend>評価 <span id="rating-required" class="muted">${r.status === "done" ? "必須" : "任意"}</span></legend><div class="rating-control"><div id="rating-stars">${r.rating === null ? '<span class="muted">未評価</span>' : stars(r.rating)}</div><input type="range" id="rating-range" aria-label="星の評価" min="0.5" max="5" step="0.5" value="${r.rating || 3}" aria-valuetext="${r.rating === null ? "未評価" : r.rating + "点"}"><label class="check-label"><input type="checkbox" id="no-rating" ${r.rating === null ? "checked" : ""}>未評価</label></div></fieldset><label class="wide">感想 <span class="muted">任意</span><textarea name="review" maxlength="10000" placeholder="心に残ったことを、ひとことでも。">${esc(r.review)}</textarea></label><label class="wide check-label"><input name="spoiler" type="checkbox" ${r.spoiler ? "checked" : ""}>ネタバレあり</label><label>読了日・鑑賞日 <span class="muted">任意</span><input name="completedAt" type="date" value="${esc(r.completedAt)}"></label><label>公開範囲<select name="visibility"><option value="public" ${r.visibility === "public" ? "selected" : ""}>公開（ログインユーザー）</option><option value="private" ${r.visibility === "private" ? "selected" : ""}>非公開（自分だけ）</option></select></label></div><div class="error" id="record-error" role="alert"></div><div class="dialog-actions">${record ? action("delete-record", icon("trash-2"), `data-id="${record.id}" aria-label="記録を削除" title="記録を削除"`, "btn danger") : ""}${action("close", "キャンセル")}<button class="btn primary" type="submit">${icon("check")}${record ? "変更を保存" : "棚に追加"}</button></div></form>`,
   );
   modal.dataset.media = work.type;
+  $('input[name="completedAt"]').closest("label").insertAdjacentHTML("beforebegin", `<label>読書・鑑賞開始日 <span class="muted">任意</span><input name="startedAt" type="date" value="${esc(r.startedAt || "")}"></label>`);
+  if (manual) $('input[name="image"]').closest("label").insertAdjacentHTML("beforebegin", `<label id="manual-isbn-label" ${work.type !== "book" ? "hidden" : ""}>ISBN <span class="muted">任意</span><input name="isbn" inputmode="text" value="${esc(work.isbn13 || work.isbn || "")}" maxlength="24"></label>`);
 }
 function ratingUpdate() {
   const n = $("#no-rating").checked ? null : Number($("#rating-range").value);
@@ -591,9 +682,10 @@ function ratingUpdate() {
   icons();
 }
 function selectWork(work) {
+  if (!work) return;
   const existing = store
     .visible(viewer, viewer)
-    .find((r) => r.work.id === work.id);
+    .find((r) => workIdentity(r.work) === workIdentity(work));
   if (existing) {
     closeModal();
     navigate(`/record/${existing.id}`);
@@ -602,7 +694,11 @@ function selectWork(work) {
 }
 function openAccount() {
   if (authState.user) {
-    showModal("アカウント", `<div class="row account-identity">${avatar(mine())}<div><strong>${esc(mine().name)}</strong><p class="muted">Googleアカウントでログイン中</p></div></div><div class="stack"><a class="btn" data-close href="#/user/${viewer}">${icon("user-round")}プロフィールを見る</a>${action("goal", icon("chart-no-axes-combined") + "読書目標と実績")}${action("logout", icon("log-out") + "ログアウト")}<p class="field-hint">本人確認はSupabase Authを利用しています。棚・感想・公開範囲はまだブラウザ保存のモックです。端末間の同期や、サーバーでの記録のアクセス制御は未実装です。</p></div>`);
+    showModal("アカウント", `<div class="row account-identity">${avatar(mine())}<div><strong>${esc(mine().name)}</strong><p class="muted">Googleアカウント / クラウド保存</p></div></div><div class="stack"><a class="btn" data-close href="#/user/${viewer}">${icon("user-round")}プロフィールを見る</a>${action("goal", icon("chart-no-axes-combined") + "読書目標と実績")}${action("import-local", icon("import") + "端末の記録を取り込む")}${action("cloud-refresh", icon("refresh-cw") + "再同期")}${action("logout", icon("log-out") + "ログアウト")}<p class="field-hint">${syncState === "error" ? "接続を確認して再同期してください。" : "本と映画の記録をSupabaseに保存しています。非公開記録は本人だけが取得できます。"}</p></div>`);
+    return;
+  }
+  if (viewer === "guest") {
+    showModal("アカウント", `<div class="row account-identity">${avatar(mine())}<div><strong>ゲスト</strong><p class="muted">この端末内に保存</p></div></div><div class="stack">${action("goal", icon("chart-no-axes-combined") + "読書目標と実績")}${googleLoginButton()}${action("logout", icon("log-out") + "終了する")}<p class="field-hint">Googleログイン後に、端末の記録を選んでクラウドへ取り込めます。この端末の記録は削除しません。</p></div>`);
     return;
   }
   showModal(
@@ -620,6 +716,8 @@ function openAccount() {
 }
 function shareUrl(path) {
   const u = new URL(location.href);
+  u.search = "";
+  if (authState.user) u.searchParams.set("cloud", "1"); else u.searchParams.delete("cloud");
   u.hash = path;
   return u.href;
 }
@@ -637,6 +735,7 @@ async function copy(text) {
   }
 }
 function openShare(recordId, selection = {}) {
+  if (viewer === "guest") { showModal("共有にはGoogleログインが必要です", `<p>Googleログイン後、端末の記録をクラウドへ取り込んで共有できます。</p>${googleLoginButton()}`); return; }
   const r = recordId ? store.get(recordId, viewer) : null;
   if (recordId && (!r || r.visibility === "private"))
     return toast("非公開の記録は共有できません");
@@ -668,6 +767,7 @@ function openShare(recordId, selection = {}) {
           "",
         )}</div><p class="share-meta">閲覧にはログインが必要です。非公開作品は含まれません。別端末へこのブラウザでの変更は同期されません。</p>`,
     );
+  if (store.mode === "cloud") $(".share-meta").textContent = "共有先でもGoogleログインが必要です。非公開の記録は含まれません。";
 }
 function openGoal() {
   const count = monthCount(),
@@ -708,9 +808,18 @@ document.addEventListener("click", async (event) => {
   if (!b) return;
   const a = b.dataset.action,
     id = b.dataset.id;
+  const currentStore = store, requester = viewer, generation = accountVersion;
+  const sameAccount = () => store === currentStore && viewer === requester && generation === accountVersion;
+  if (b.dataset.pending) return;
+  const mutating = ["confirm-delete", "follow", "like", "confirm-delete-comment", "cloud-refresh", "cloud-retry"].includes(a);
+  if (mutating) { b.dataset.pending = "true"; b.disabled = true; }
   try {
     if (a === "close") closeModal();
     else if (a === "login") setSession(id);
+    else if (a === "guest-login") setSession("guest");
+    else if (a === "cloud-retry") await startCloud(authState.user);
+    else if (a === "cloud-refresh") { await currentStore.refresh(); if (!sameAccount()) return; await currentStore.ensureRoute(route()); if (!sameAccount()) return; render(); if (modal.open && b.isConnected) openAccount(); toast("最新の記録を読み込みました"); }
+    else if (a === "import-local") openImport();
     else if (a === "logout") {
       if (authState.user) await auth.signOut();
       else setSession("");
@@ -729,6 +838,16 @@ document.addEventListener("click", async (event) => {
     } else if (a === "account") openAccount();
     else if (a === "goal") openGoal();
     else if (a === "add") openSearch();
+    else if (a === "search-books") { view.type = "book"; openSearch(); }
+    else if (a === "work-detail") openWorkDetail(works.get(id));
+    else if (a === "discover-more") {
+      const section = discoverySections.find((s) => s.id === b.dataset.section);
+      view.type = "book"; searchType = "book"; searchField = "all"; searchOrder = section.order || "relevance"; searchQuery = section.query; openSearch(false);
+    }
+    else if (a === "discover-retry") { discoveryCache.delete(b.dataset.section); render(); }
+    else if (a === "search-more") { searchPage++; void renderCatalog(true); }
+    else if (a === "search-retry") void renderCatalog();
+    else if (a === "reset-shelf-filters") { view.ratingFilter = "all"; view.addedAfter = ""; view.query = ""; view.filter = "all"; render(); }
     else if (a === 'shelf-view') {
       shelfView = b.dataset.view;
       localStorage.setItem('readtrace:shelf-view:v1', shelfView);
@@ -742,6 +861,8 @@ document.addEventListener("click", async (event) => {
       view.type = b.dataset.type;
       view.filter = "all";
       view.query = "";
+      view.ratingFilter = "all";
+      view.addedAfter = "";
       if (c.shared) navigate(`/share/${c.owner}/${view.type}/${c.shared}`);
       else render();
     } else if (a === "filter") {
@@ -762,7 +883,7 @@ document.addEventListener("click", async (event) => {
         null,
         true,
       );
-    else if (a === "select-work") selectWork(catalog.find((w) => w.id === id));
+    else if (a === "select-work") selectWork(works.get(id));
     else if (a === "edit") {
       const r = store.get(id, viewer);
       if (r?.userId === viewer)
@@ -778,12 +899,14 @@ document.addEventListener("click", async (event) => {
           `<p>「${esc(r.work.title)}」の評価・感想も削除されます。</p><div class="dialog-actions">${action("edit", "キャンセル", `data-id="${id}"`)}${action("confirm-delete", "削除する", `data-id="${id}"`, "btn danger")}</div>`,
         );
     } else if (a === "confirm-delete") {
-      store.remove(id, viewer);
+      await store.remove(id, viewer);
+      if (!sameAccount() || !b.isConnected) return;
       closeModal();
       navigate("/shelf");
       toast("記録を削除しました");
     } else if (a === "follow") {
-      store.follow(viewer, id);
+      await store.follow(viewer, id);
+      if (!sameAccount()) return;
       const focusId = id;
       const wasModal = modal.open;
       render();
@@ -792,7 +915,8 @@ document.addEventListener("click", async (event) => {
         .querySelector(`[data-action="follow"][data-id="${focusId}"]`)
         ?.focus();
     } else if (a === "like") {
-      store.like(viewer, id);
+      await store.like(viewer, id);
+      if (!sameAccount()) return;
       render();
       document.querySelector(`[data-action="like"][data-id="${id}"]`)?.focus();
     } else if (a === "reveal") {
@@ -804,7 +928,8 @@ document.addEventListener("click", async (event) => {
         `<p>自分のコメントを削除します。</p><div class="dialog-actions">${action("close", "キャンセル")}${action("confirm-delete-comment", "削除する", `data-id="${id}"`, "btn danger")}</div>`,
       );
     } else if (a === "confirm-delete-comment") {
-      store.removeComment(viewer, id);
+      await store.removeComment(viewer, id);
+      if (!sameAccount() || !b.isConnected) return;
       closeModal();
       render();
       toast("コメントを削除しました");
@@ -814,7 +939,9 @@ document.addEventListener("click", async (event) => {
       openShare(null, { type: b.dataset.type, owner: b.dataset.owner });
     } else if (a === "copy-url") copy(b.dataset.url);
   } catch (error) {
-    toast(error.message);
+    if (sameAccount()) toast(error.message);
+  } finally {
+    if (mutating && b.isConnected) { delete b.dataset.pending; b.disabled = false; }
   }
 });
 document.addEventListener("input", (event) => {
@@ -825,7 +952,10 @@ document.addEventListener("input", (event) => {
   }
   if (target.id === "catalog-search") {
     searchQuery = target.value;
-    renderCatalog();
+    searchController?.abort();
+    searchVersion++;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => void renderCatalog(), 450);
   }
   if (target.id === "rating-range") {
     $("#no-rating").checked = false;
@@ -841,6 +971,9 @@ document.addEventListener("input", (event) => {
   }
 });
 document.addEventListener("change", (event) => {
+  if (event.target.id === "rating-filter") { view.ratingFilter = event.target.value; renderShelfGrid(); }
+  if (event.target.id === "added-after") { view.addedAfter = event.target.value; renderShelfGrid(); }
+  if (event.target.id === "catalog-field") { searchField = event.target.value; void renderCatalog(); }
   if (event.target.id === "shelf-sort") {
     view.sort = event.target.value;
     renderShelfGrid();
@@ -852,6 +985,7 @@ document.addEventListener("change", (event) => {
   if (event.target.id === "edit-type") {
     editing.work.type = event.target.value;
     modal.dataset.media = event.target.value;
+    if ($("#manual-isbn-label")) $("#manual-isbn-label").hidden = event.target.value !== "book";
     $('input[name="creator"]').closest("label").firstChild.textContent =
       event.target.value === "book" ? "著者 " : "監督 ";
     $("#edit-status").innerHTML = Object.entries(labels[event.target.value])
@@ -860,19 +994,25 @@ document.addEventListener("change", (event) => {
     $("#rating-required").textContent = "任意";
   }
 });
-document.addEventListener("submit", (event) => {
+document.addEventListener("submit", async (event) => {
   const form = event.target;
   if (
-    !["register-form", "record-form", "comment-form", "goal-form"].includes(
+    !["register-form", "record-form", "comment-form", "goal-form", "import-form"].includes(
       form.id,
     )
   )
     return;
   event.preventDefault();
+  if (form.dataset.saving) return;
+  form.dataset.saving = "true";
+  const submitter = form.querySelector('[type="submit"]');
+  if (submitter) { submitter.disabled = true; submitter.setAttribute("aria-busy", "true"); }
+  const currentStore = store, requester = viewer, generation = accountVersion;
+  const sameForm = () => store === currentStore && viewer === requester && generation === accountVersion && form.isConnected;
   const data = new FormData(form);
   try {
     if (form.id === "register-form") {
-      const u = store.register(String(data.get("name") || ""));
+      const u = demoStore.register(String(data.get("name") || ""));
       authMode = "login";
       setSession(u.id);
       toast("あなたの棚をつくりました");
@@ -890,8 +1030,12 @@ document.addEventListener("submit", (event) => {
           creator: data.get("creator"),
           image,
         };
+        const isbnInput = String(data.get("isbn") || "").trim();
+        if (work.type === "book" && isbnInput && !canonicalIsbn(isbnInput)) throw new Error("ISBNは有効な10桁または13桁で入力してください。");
+        work.isbn13 = work.type === "book" ? canonicalIsbn(isbnInput) : "";
+        work.isbn = work.isbn13;
       }
-      const r = store.save(
+      const r = await store.save(
         {
           ...editing.record,
           work,
@@ -903,40 +1047,59 @@ document.addEventListener("submit", (event) => {
           spoiler: data.has("spoiler"),
           visibility: data.get("visibility"),
           completedAt: String(data.get("completedAt") || ""),
+          startedAt: String(data.get("startedAt") || ""),
         },
         viewer,
       );
+      if (!sameForm()) return;
       view.type = r.work.type;
       view.filter = "all";
       view.query = "";
+      if (!editing.record) { view.ratingFilter = "all"; view.addedAfter = ""; }
       closeModal();
       if (editing.record) render();
       else navigate("/shelf");
       toast("記録を保存しました");
     }
     if (form.id === "comment-form") {
-      store.comment(viewer, form.dataset.id, String(data.get("comment") || ""));
+      await store.comment(viewer, form.dataset.id, String(data.get("comment") || ""));
+      if (!sameForm()) return;
       render();
       toast("コメントを投稿しました");
     }
     if (form.id === "goal-form") {
-      store.goal(viewer, Number(data.get("goal")));
+      await store.goal(viewer, Number(data.get("goal")));
+      if (!sameForm()) return;
       closeModal();
       render();
       toast("月間目標を保存しました");
     }
+    if (form.id === "import-form") {
+      const selected = data.getAll("source");
+      if (!selected.length) throw new Error("取り込む記録を選んでください。");
+      const sources = localSources();
+      const records = selected.flatMap((key) => sources.find((source) => source.key === key)?.records || []);
+      const result = await store.importRecords(records);
+      if (!sameForm()) return;
+      showModal("取り込み結果", `<p>${result.imported}件を保存しました。重複${result.skipped}件は追加していません。</p>${result.errors.length ? `<div class="error" role="alert">${result.errors.map(esc).join("<br>")}</div>` : ""}<p class="field-hint">元の端末内データは変更していません。</p><div class="dialog-actions">${action("close", "閉じる", "", "btn primary")}</div>`);
+      render();
+    }
   } catch (error) {
+    if (!sameForm()) return;
     const errorNode = $(
       {
         "register-form": "#register-error",
         "record-form": "#record-error",
         "comment-form": "#comment-error",
         "goal-form": "#goal-error",
+        "import-form": "#import-error",
       }[form.id],
     );
-    errorNode.textContent = error.message;
-    errorNode.tabIndex = -1;
-    errorNode.focus();
+    if (errorNode && form.isConnected) { errorNode.textContent = error.message; errorNode.tabIndex = -1; errorNode.focus(); }
+    else toast(error.message);
+  } finally {
+    delete form.dataset.saving;
+    if (submitter?.isConnected) { submitter.disabled = false; submitter.removeAttribute("aria-busy"); }
   }
 });
 document.addEventListener("keydown", (event) => {
@@ -958,11 +1121,83 @@ document.addEventListener("keydown", (event) => {
     document.querySelectorAll(".tab")[next]?.focus();
   }
 });
+function localSources() {
+  const sources = [];
+  const guest = guestStore.data.records.filter((r) => r.userId === "guest");
+  if (guest.length) sources.push({ key: "guest", label: "ゲストの記録", records: guest });
+  if (authState.user) {
+    try {
+      const old = JSON.parse(localStorage.getItem(`readtrace:account:${authState.user.id}:v1`));
+      const records = old?.records?.filter((r) => r.userId === authState.user.id) || [];
+      if (records.length) sources.push({ key: "account", label: "以前このGoogleアカウントで端末に保存した記録", records });
+    } catch {}
+  }
+  for (const u of demoStore.data.users) {
+    const records = demoStore.data.records.filter((r) => r.userId === u.id);
+    if (records.length) sources.push({ key: `demo:${u.id}`, label: `デモ棚: ${u.name}`, records });
+  }
+  return sources;
+}
+function openImport() {
+  if (store.mode !== "cloud") return;
+  const sources = localSources();
+  showModal("端末の記録を取り込む", sources.length ? `<p class="muted">取り込む棚を選んでください。元データは削除しません。</p><form id="import-form" class="stack" novalidate>${sources.map((source) => `<label class="check-label"><input type="checkbox" name="source" value="${esc(source.key)}">${esc(source.label)} (${source.records.length}件)</label>`).join("")}<p class="field-hint">選んだ棚の本・映画・評価・感想・日付・公開範囲を、このGoogleアカウントへ保存します。同じISBNなどの重複作品は追加しません。</p><div class="error" id="import-error" role="alert"></div><div class="dialog-actions">${action("close", "キャンセル")}<button class="btn primary" type="submit">${icon("import")}選んだ記録を取り込む</button></div></form>` : '<p>この端末に取り込める記録はありません。</p>');
+}
+async function startCloud(identity) {
+  if (!identity) return;
+  const version = ++accountVersion;
+  store.dispose?.();
+  store = createStore({ getItem: () => null, setItem() {} }, { seed: () => emptyAccountData(identity) });
+  viewer = identity.id;
+  cloudLoading = true; cloudFailure = "";
+  closeModal(); render();
+  const candidate = createCloudStore(auth.client, identity, {
+    onChange: () => {
+      if (version !== accountVersion || store !== candidate || cloudLoading) return;
+      candidate.data.records.forEach((r) => works.set(r.work.id, r.work));
+      render();
+      const path = route();
+      if (/^\/(?:record|share|user)\//.test(path)) void candidate.ensureRoute(path).then(() => { if (store === candidate && path === route()) render(); }).catch(() => {});
+    },
+    onSync: (state) => {
+      if (version !== accountVersion) return;
+      syncState = state;
+      const button = $('.cloud-status');
+      if (button) { button.innerHTML = icon(state === "error" ? "cloud-off" : "cloud-check"); button.title = state === "error" ? "接続を確認して再同期" : state === "syncing" ? "同期中" : "クラウド保存"; button.setAttribute("aria-label", button.title); icons(); }
+    },
+  });
+  try {
+    await candidate.init();
+    await candidate.ensureRoute(route());
+    if (version !== accountVersion) { candidate.dispose(); return; }
+    store = candidate;
+    cloudLoading = false;
+    candidate.data.records.forEach((r) => works.set(r.work.id, r.work));
+    candidate.subscribe(); render();
+    const offerKey = `readtrace:import-offered:${identity.id}`;
+    if (!sessionStorage.getItem(offerKey) && localSources().some((s) => ["guest", "account"].includes(s.key))) {
+      sessionStorage.setItem(offerKey, "1");
+      openImport();
+    }
+  } catch (error) {
+    candidate.dispose();
+    if (version !== accountVersion) return;
+    cloudLoading = false; cloudFailure = error.message; render();
+  }
+}
 const auth = createAuth({
   config: authConfig,
   storage: sessionStorage,
   location,
   replaceUrl: (url) => history.replaceState(null, "", url),
+  checkProvider: async () => {
+    const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 7000);
+    try {
+      const response = await fetch(`${authConfig.url}/auth/v1/settings`, { headers: { apikey: authConfig.publishableKey }, signal: controller.signal });
+      if (!response.ok) throw new Error("Auth settings unavailable");
+      return (await response.json()).external?.google === true;
+    } finally { clearTimeout(timer); }
+  },
   createClient: async (...args) => {
     if (!window.supabase) await new Promise((resolve, reject) => {
       const script = document.createElement("script");
@@ -977,25 +1212,21 @@ const auth = createAuth({
     const changed = next.user?.id !== authState.user?.id;
     authState = next;
     if (next.user && changed) {
-      store = createStore(localStorage, {
-        key: `readtrace:account:${next.user.id}:v1`,
-        seed: () => emptyAccountData(next.user),
-      });
-      const identity = emptyAccountData(next.user).users[0];
-      store.data.users = [identity, ...store.data.users.filter((u) => u.id !== identity.id)];
-      store.persist();
-      viewer = next.user.id;
       localStorage.removeItem(SESSION_KEY);
       revealed.clear();
-      closeModal();
+      void startCloud(next.user);
     } else if (!next.user && changed) {
+      accountVersion++;
+      store.dispose?.();
       store = demoStore;
       viewer = "";
+      cloudLoading = false; cloudFailure = "";
       revealed.clear();
       closeModal();
     } else if (!next.user && next.ready && !viewer) {
       const savedDemo = localStorage.getItem(SESSION_KEY);
-      if (demoStore.data.users.some((u) => u.id === savedDemo)) viewer = savedDemo;
+      if (savedDemo === "guest") { viewer = "guest"; store = guestStore; }
+      else if (demoStore.data.users.some((u) => u.id === savedDemo)) viewer = savedDemo;
     }
     if (changed || !viewer || !document.querySelector(".shell")) render();
   },
