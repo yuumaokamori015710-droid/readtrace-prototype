@@ -29,16 +29,16 @@ Guest records are stored under `readtrace:guest:v1`. The existing `readtrace:boo
 
 Guest sharing requires Google login and cloud import. Cloud sharing adds an explicit cloud marker and always requires real Auth; choosing a demo/guest user cannot reveal cloud records. Nonpublic rows are also denied through the REST API, regardless of UI state. Spoiler text is absent from unrevealed DOM/list/share previews.
 
-## Owner Setup Still Required
+## Authentication Setup and Remaining Work
 
 Created Google Cloud project: `ReadTrace` / `readtrace-513911`. No paid APIs or billing setup was enabled by the agent.
 
-1. Finish Google Auth Platform branding/contact details and choose External. The owner must accept applicable policies themselves.
-2. Create a Web application OAuth client. Authorized JavaScript origin: `https://yuumaokamori015710-droid.github.io`.
-3. Authorized redirect URI: `https://jjoqjdfldryeqblpobhh.supabase.co/auth/v1/callback`.
-4. Enter that Client ID/Secret in Supabase Auth's Google provider and enable it. Keep nonce/email-verification protections enabled. The owner enters/seals credentials in the management UI; never paste secrets into chat or Git.
-5. Supabase Site URL and exact production redirect allowlist entry: `https://yuumaokamori015710-droid.github.io/readtrace-prototype/reading-prototype.html`. Optional development entries are the exact same HTML path on `http://127.0.0.1:8011` and `http://localhost:8011`. Do not add a global wildcard.
-6. For Google Books, enable the Books API in the dedicated Cloud project, create a key restricted to that API, and set `GOOGLE_BOOKS_API_KEY` in the Supabase Edge Function secrets. Do not set it in frontend code. The old local `.env` does not configure the public Edge Function.
+1. Completed: the owner created the `ReadTrace Web` Web application OAuth client and entered Client ID/Secret directly in Supabase. Authorized JavaScript origin: `https://yuumaokamori015710-droid.github.io`. No secret was copied to chat or Git.
+2. Completed: Google callback URI is `https://jjoqjdfldryeqblpobhh.supabase.co/auth/v1/callback`.
+3. Completed: after explicit permission, enabled the stored Google provider without changing credentials. Public Auth settings now return `external.google: true`; real OAuth consent and login succeeded. Nonce/email-verification protections were not disabled.
+4. Completed: Supabase Site URL and the single exact production redirect allowlist entry are `https://yuumaokamori015710-droid.github.io/readtrace-prototype/reading-prototype.html`. No wildcard or development URL was added. Development URLs require an explicit later addition.
+5. Remaining branding work: Google Audience is External / Testing and homepage/privacy/terms URLs are blank. Current login requests only basic profile/email, which Google's official rules exempt from test-user-list and seven-day-expiry restrictions. In-production branding/domain publication is a separate remaining task, not falsely reported as completed. The owner chose to obtain a custom domain later; none was purchased or configured.
+6. Remaining Google Books setup: enable Books API, create a Books-only key, and set `GOOGLE_BOOKS_API_KEY` in the Supabase Edge Function secrets. Do not set it in frontend code. The old local `.env` does not configure the public Edge Function. Open Library/NDL fallback continues to work.
 
 Supabase provider page: https://supabase.com/dashboard/project/jjoqjdfldryeqblpobhh/auth/providers
 
@@ -57,9 +57,11 @@ The Supabase publishable key is intentionally public browser configuration, not 
 - Node unit tests: 52 pass (Auth, catalog normalization/fallback, cloud adapter, persistence/validation and original store behavior). Cloud adapter success cases use a substituted SDK; they are not a real Google login or cross-device test.
 - Real Supabase transaction: 15 RLS/constraint/history assertions passed. Test auth users, profiles, records and social rows were rolled back. Table counts were rechecked as zero.
 - Security advisors: no findings after the migration. Performance advisors only report unused new indexes because the tables are empty; those indexes support the FK/policy paths and are retained.
+- The later Auth check reports one warning for disabled leaked-password protection. The current UI uses Google OAuth rather than application passwords; password protection/Email-provider changes were not made silently. Revisit this before offering email/password sign-in. No paid service was enabled to clear the warning.
 - Live metadata endpoint: Japanese queries return real Open Library/NDL books, with the Google restriction reported rather than hidden. More browser/deployment checks are recorded in `verification.md`.
 - GitHub Pages release `3e284be` deployed successfully (Actions run `42220511413`); public Japanese search and guest registration were exercised. Source implementation is `bd3d485` on `main`.
-- Actual Google sign-in, real account restore, two-device synchronization and iPhone Safari OAuth must still be verified after owner configuration. They are not reported as completed.
+- Actual Google sign-in, profile/photo display, cloud create/update, account/record restore after reload, second-tab server loading, cross-tab logout, and shared-record return after another real Google login passed on the public URL. The exact test record was also read back from Postgres to confirm status/rating/privacy/dates/history. These are no longer mock-SDK-only claims.
+- Two physical devices, iPhone Safari, automatic token renewal over its lifetime, and a separate real Google user's view remain unverified. Same-browser second-tab testing is not described as PC-to-phone synchronization.
 
 ## References
 
@@ -70,6 +72,7 @@ The Supabase publishable key is intentionally public browser configuration, not 
 - https://www.wikidata.org/wiki/Wikidata:Data_access
 - https://supabase.com/docs/guides/auth/social-sign-in/auth-google
 - https://supabase.com/docs/guides/database/postgres/row-level-security
+- https://support.google.com/cloud/answer/15549945
 
 ## Reproducible Function Deployment
 

@@ -8,9 +8,12 @@
 - 作成時の見積もり: USD 0 / 月。将来のプラン変更や使用量まで無料を保証するものではありません。
 - アプリは公開可能なpublishable keyのみを使用。Google Client Secret、service_roleキーはソース・GitHub Pagesに保存しません。
 - 調査開始時、Googleプロバイダーは公開設定APIで `false` でした。現在のアプリは実際のプロバイダー設定を起動時・ログイン時に確認し、有効な場合にだけGoogle認証を開始します。フロントエンドのフラグを書き換えただけで完成とは扱いません。
-- 管理画面へのログイン待ちです。管理用ログインと、アプリ利用者のGoogleログインは別物です。
+- 2026-11-06: 所有者がGoogle OAuthクライアントを作成し、SupabaseへClient ID/Secretを登録済みです。明示的な許可後にGoogle providerを有効化し、公開設定APIの `external.google: true` と実Googleログインを確認しました。
+- Site URLとRedirect URLは本番HTMLの完全一致URLを設定済みです。登録されたRedirect URLは1件で、ワイルドカードや開発用URLは追加していません。
+- 実Googleユーザーでクラウド保存・更新・再読み込み・別タブ復元・ログアウト・共有先へ再ログイン後に戻ることを確認しました。iPhone Safari実機や二端末・別Googleアカウントの検証は未実施です。
+- Google Auth Platformの対象はExternal / Testingです。基本プロフィールとメールだけを使うGoogleログインは、テストユーザー限定・7日失効の例外です。ブランド名や独自ドメイン向けの公開設定は別途整備します。
 
-## 管理画面で残っている設定
+## 再設定時の手順
 
 ### Google Auth Platform
 
@@ -19,12 +22,10 @@
 3. 利用する情報は `openid`、`userinfo.email`、`userinfo.profile` の基本プロフィールだけです。Drive、Gmailなどの権限は追加しません。
 4. Web application用のOAuthクライアントを作成します。
 
-Authorized JavaScript origins:
+Authorized JavaScript origins（現在は本番の1件のみ登録）:
 
 ```text
 https://yuumaokamori015710-droid.github.io
-http://127.0.0.1:8011
-http://localhost:8011
 ```
 
 Authorized redirect URI (GoogleからSupabaseへ戻るURL):
@@ -51,15 +52,13 @@ Site URL:
 https://yuumaokamori015710-droid.github.io/readtrace-prototype/reading-prototype.html
 ```
 
-Redirect URLs (Supabaseからアプリへ戻るURL、完全一致):
+Redirect URLs (Supabaseからアプリへ戻るURL、現在登録済みの完全一致URL):
 
 ```text
 https://yuumaokamori015710-droid.github.io/readtrace-prototype/reading-prototype.html
-http://127.0.0.1:8011/reading-prototype.html
-http://localhost:8011/reading-prototype.html
 ```
 
-全ドメインに一致するワイルドカードは登録しません。不要になった開発用URLは削除してください。
+全ドメインに一致するワイルドカードは登録しません。ローカル認証を使うときだけ、必要なlocalhost/127.0.0.1の完全一致URLを明示的に追加してください。
 
 ## 有効化と確認
 
@@ -73,11 +72,16 @@ http://localhost:8011/reading-prototype.html
 
 ## 認証と記録の保存を混同しない
 
-現在はGoogleユーザーの棚・感想・交流をSupabase Postgresへ保存する実装とRLSを追加しています。ゲストとデモは別の端末内保存のままです。所有者によるGoogle認証設定と、実アカウントでのログイン・二端末同期の検証がまだ必要です。最新の構成・検証・Google Booksキー設定は `production-status.md` を参照してください。
+Googleユーザーの棚・感想・交流をSupabase Postgresへ保存し、RLSで公開範囲を制御します。実Googleログインと記録のDB保存・復元まで確認済みです。ゲストとデモは別の端末内保存のままです。二端末同期・iPhone Safari実機の検証はまだ必要です。最新の構成・検証・Google Booksキー設定は `production-status.md` を参照してください。
+
+## 独自ドメインへの変更
+
+同じSupabaseプロジェクトを継続すれば、ユーザーとクラウド記録を維持できます。GitHub PagesのCustom domain/DNS/HTTPS、Supabase Site URL/Redirect URL、書誌Edge Functionの許可Origin、Google側の必要な生成元・ブランドURLを更新します。GoogleからSupabaseへ戻るcallback URLは同じです。新しいOriginでは再ログインが必要で、旧Originのゲスト記録は事前にクラウドへ取り込んでください。
 
 ## 参照
 
 - https://supabase.com/docs/guides/auth/social-sign-in/auth-google
 - https://supabase.com/docs/guides/auth/sessions/pkce-flow
 - https://supabase.com/docs/guides/auth/redirect-urls
+- https://support.google.com/cloud/answer/15549945
 - SDK: `@supabase/supabase-js` 2.119.0 (公式npmパッケージを同梱)
