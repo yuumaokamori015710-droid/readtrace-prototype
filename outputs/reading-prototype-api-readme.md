@@ -1,35 +1,48 @@
 # ReadTrace Prototype: Book APIs
 
-The prototype uses free, keyless book APIs directly from the browser so it can
-run on GitHub Pages.
+The GitHub Pages frontend calls a Supabase Edge Function for live book searches.
+Google Books is the first provider, with Open Library and NDL Search as supplements.
+No Google credential is included in the static site.
 
 ```text
-Browser -> NDL Search OpenSearch API
-Browser -> openBD ISBN API
-Browser -> Open Library search API
+GitHub Pages -> readtrace-books Edge Function -> Google Books API
+                                            -> Open Library search API
+                                            -> NDL Search OpenSearch API
 ```
 
 ## APIs
 
-- NDL Search: Japanese title search through the OpenSearch endpoint.
-- openBD: Japanese bibliographic metadata and cover correction when an ISBN is available.
-- Open Library: international/English title search, author names, ISBNs, and cover candidates.
-- Local sample catalog: fallback for searches with no external result.
+- Google Books: title, author and ISBN search; covers and bibliographic metadata.
+- Open Library: complementary international/English metadata, ISBNs and covers.
+- NDL Search: supplementary Japanese title and ISBN search.
+- Bundled sample catalogs are limited to the separate, explicitly labelled demo mode.
+  Live searches never substitute sample results when providers fail.
 
 ## Search Flow
 
-1. If the search query looks like an ISBN, call openBD directly.
-2. If the query contains Japanese text, search NDL Search by title with `dpid=iss-ndl-opac`.
-3. Keep book-like NDL results and enrich ISBN candidates with openBD.
-4. For non-Japanese queries, or when NDL has no usable result, search Open Library.
-5. Merge external results with the local sample catalog.
+1. Validate the query and canonicalize valid ISBN-10/ISBN-13 values.
+2. Search Google Books first and supplement with Open Library.
+3. Add NDL Search results for Japanese queries or ISBN searches.
+4. Deduplicate by canonical ISBN/provider identity and prefer Japanese metadata.
+5. Return paginated results with source credits and explicit provider warnings.
+6. Keep manual entry available for missing books and network failures.
 
 ## Notes
 
-- No Google Books API key is required for the GitHub Pages prototype.
-- NDL Search is best for Japanese title discovery.
-- openBD is best for Japanese books when the ISBN is known.
-- Open Library is best for international/English title search.
-- NDL Search requires visible credit and has usage guidance for commercial or continuous access.
-- Supabase Auth is optional in the prototype. When configured, new shelf items are saved to `readtrace_books`.
-- For a production app, cache results and keep a user-editable book master.
+- Enable Books API in the dedicated Google Cloud project `readtrace-513911`.
+- Create a Books-API-only key and store it as `GOOGLE_BOOKS_API_KEY` in the
+  Supabase project `jjoqjdfldryeqblpobhh` Edge Function secrets. Never put it in
+  `readtrace-config.mjs`, HTML, a browser query string or Git.
+- Requests originate from Supabase, not GitHub Pages. Website/referrer restrictions
+  are therefore not appropriate for this server-side key. Restrict its API scope
+  to Books API; do not enable unrelated APIs or link billing as part of setup.
+- The Google Cloud console showed no linked billing account on 2026-11-07, with
+  Books quotas of 1,000 queries/day and 100 queries/minute/user. These are observed
+  project limits, not a promise of unlimited free service.
+- Debouncing, caching, provider timeouts and rate-limit backoff reduce API traffic.
+  The public metadata endpoint has best-effort per-instance limits, not a durable
+  global abuse-control boundary.
+- NDL Search requires visible credit and has usage guidance for continuous access.
+- Real Google login uses Supabase Auth; cloud shelves use `readtrace_records` with
+  row-level security. Legacy guest/demo stores remain separate and importable.
+- See `production-status.md` and `verification.md` for deployment and actual checks.
