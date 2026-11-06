@@ -93,3 +93,10 @@ This section supersedes the earlier pending-Google statements. It does not claim
 - Reran all 52 Node tests successfully. Security advisor now reports one warning: leaked-password protection disabled. Google OAuth does not use application-managed passwords; no password-provider/security or paid-plan setting was changed to suppress this warning.
 - Google Audience remains External / Testing; homepage/privacy/terms branding URLs are blank. Official Google guidance exempts basic profile/email-only Sign in with Google from test-user-list and seven-day-expiry restrictions. Brand publication and the planned custom domain remain separate unfinished work: https://support.google.com/cloud/answer/15549945.
 - Not verified: physical iPhone Safari, PC-to-phone synchronization, a different real Google user's view, and automatic token renewal over its lifetime. Same-browser separate tabs are not described as two-device testing.
+
+### Final Public Check
+
+- Source verification/icon fix commit `c3e6e87` is on `main`. Pages icon fix commit `34f5976` deployed successfully in Actions run `42236699697` (the Pages deployment stage took about 6.5 minutes).
+- Reloaded the public application after deployment. The real account remained signed in, the synchronization button rendered `lucide-cloud`, and no new warning/error logs appeared after that reload. Saved proof in ignored `outputs/qa/google-login-verified-account.png`.
+- After shared-route testing, changed the test record back to private. The first tab fetched that change from the second tab and removed share controls. A direct anonymous REST request with only the public project key returned HTTP 401.
+- Exactly one test-created real-cloud `こころ` record remains private pending the owner's deletion confirmation. No existing user records or Google identity were deleted, and no guest/demo source was changed. Do not mistake its test rating/date for the owner's actual reading history.

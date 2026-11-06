@@ -62,6 +62,7 @@ The Supabase publishable key is intentionally public browser configuration, not 
 - GitHub Pages release `3e284be` deployed successfully (Actions run `42220511413`); public Japanese search and guest registration were exercised. Source implementation is `bd3d485` on `main`.
 - Actual Google sign-in, profile/photo display, cloud create/update, account/record restore after reload, second-tab server loading, cross-tab logout, and shared-record return after another real Google login passed on the public URL. The exact test record was also read back from Postgres to confirm status/rating/privacy/dates/history. These are no longer mock-SDK-only claims.
 - Two physical devices, iPhone Safari, automatic token renewal over its lifetime, and a separate real Google user's view remain unverified. Same-browser second-tab testing is not described as PC-to-phone synchronization.
+- Final authenticated-UI patch `34f5976` is deployed on Pages (successful Actions run `42236699697`). The synchronization icon renders without new warnings after reload. One test-only cloud book is private and awaits explicit cleanup approval; no existing user data was deleted.
 
 ## References
 
