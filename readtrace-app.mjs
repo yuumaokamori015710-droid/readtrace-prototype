@@ -220,7 +220,7 @@ function shell(content) {
             ${navItem("/people", "ユーザーを探す", "users")}
           </nav>
           <div class="topbar-right">
-            ${authState.user ? action("cloud-refresh", icon(syncState === "error" ? "cloud-off" : "cloud-check"), `aria-label="${syncState === "error" ? "接続を確認して再同期" : "クラウドを再読み込み"}" title="${syncState === "syncing" ? "同期中" : syncState === "error" ? "接続を確認して再同期" : "クラウド保存"}"`, "icon-btn cloud-status") : `<span class="local-mode">${viewer === "guest" ? "ゲスト" : "デモ"}・端末内保存</span>`}
+            ${authState.user ? action("cloud-refresh", icon(syncState === "error" ? "cloud-off" : "cloud"), `aria-label="${syncState === "error" ? "接続を確認して再同期" : "クラウドを再読み込み"}" title="${syncState === "syncing" ? "同期中" : syncState === "error" ? "接続を確認して再同期" : "クラウド保存"}"`, "icon-btn cloud-status") : `<span class="local-mode">${viewer === "guest" ? "ゲスト" : "デモ"}・端末内保存</span>`}
             ${action("add", icon("plus") + "作品を追加", "", "btn primary desktop-add")}
             <button class="header-account" data-action="account" aria-label="アカウント" title="${esc(mine().name)}のアカウント">${avatar(mine())}</button>
           </div>
@@ -1163,7 +1163,7 @@ async function startCloud(identity) {
       if (version !== accountVersion) return;
       syncState = state;
       const button = $('.cloud-status');
-      if (button) { button.innerHTML = icon(state === "error" ? "cloud-off" : "cloud-check"); button.title = state === "error" ? "接続を確認して再同期" : state === "syncing" ? "同期中" : "クラウド保存"; button.setAttribute("aria-label", button.title); icons(); }
+      if (button) { button.innerHTML = icon(state === "error" ? "cloud-off" : "cloud"); button.title = state === "error" ? "接続を確認して再同期" : state === "syncing" ? "同期中" : "クラウド保存"; button.setAttribute("aria-label", button.title); icons(); }
     },
   });
   try {
