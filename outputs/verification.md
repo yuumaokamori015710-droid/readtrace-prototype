@@ -67,3 +67,10 @@ The earlier mock-only statements describe the previous release, not the newly de
 - A review found and fixed unescaped cloud metadata, stale-record resurrection, account-switch async UI effects, old local-share routing, concurrent Open Library requests, followed-feed truncation, and lost discovery newest ordering. Added a reproducible function packaging command.
 - No existing guest/demo/account storage was deleted or uploaded automatically. Local browser tests created one private book and one completed movie in the newly empty guest store; test-only comment/manual-entry fixtures were removed.
 - Created Google Cloud project `ReadTrace` / `readtrace-513911`, without enabling billing/paid APIs. Branding/contact policies, OAuth client credentials, Supabase Google provider and exact redirects require owner completion. Actual Google consent/login, real-account restore, two-device synchronization and iPhone Safari OAuth have NOT been verified. A valid Google Books key is also still required for the preferred provider.
+
+### Deployment
+
+- Source commit: `bd3d485` pushed to `main`. Static frontend commit: `3e284be` pushed to `gh-pages`. GitHub Actions Pages run `42220511413` completed successfully.
+- Public release URL: `https://yuumaokamori015710-droid.github.io/readtrace-prototype/reading-prototype.html?release=20261106-catalog`.
+- Public browser: an empty guest shelf opens, Japanese title search `吾輩は猫である` returns 26 real Open Library/NDL results, bibliographic detail opens, and adding a reading/unrated book works. Captured search proof in ignored `outputs/qa/public-live-search.png`; it includes one loaded actual cover and graceful fallbacks for others.
+- Rechecked production Auth settings after deployment: `external.google` remains false. Deploy success is not Google authentication completion.

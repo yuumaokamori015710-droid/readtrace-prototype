@@ -58,6 +58,7 @@ The Supabase publishable key is intentionally public browser configuration, not 
 - Real Supabase transaction: 15 RLS/constraint/history assertions passed. Test auth users, profiles, records and social rows were rolled back. Table counts were rechecked as zero.
 - Security advisors: no findings after the migration. Performance advisors only report unused new indexes because the tables are empty; those indexes support the FK/policy paths and are retained.
 - Live metadata endpoint: Japanese queries return real Open Library/NDL books, with the Google restriction reported rather than hidden. More browser/deployment checks are recorded in `verification.md`.
+- GitHub Pages release `3e284be` deployed successfully (Actions run `42220511413`); public Japanese search and guest registration were exercised. Source implementation is `bd3d485` on `main`.
 - Actual Google sign-in, real account restore, two-device synchronization and iPhone Safari OAuth must still be verified after owner configuration. They are not reported as completed.
 
 ## References
