@@ -116,7 +116,7 @@ export function createBookProvider({ fetcher = fetch, parseXml, googleKey = "", 
       return format === "json" ? await response.json() : parseXml(await response.text());
     } finally { clearTimeout(timeout); signal?.removeEventListener("abort", cancel); }
   }
-  async function search({ query, field = "all", page = 1, order = "relevance", signal } = {}) {
+  async function search({ query, field = "all", page = 1, order = "relevance", primaryFound = false, signal } = {}) {
     query = String(query || "").normalize("NFKC").trim().slice(0, 160);
     if (!query) return { items: [], hasMore: false, warnings: [], sources: [] };
     page = Math.max(1, Math.min(50, Number(page) || 1));
@@ -129,18 +129,22 @@ export function createBookProvider({ fetcher = fetch, parseXml, googleKey = "", 
     const warnings = [], sources = [], lists = [];
     let hasMore = false;
     const japanese = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(query);
-    if (Date.now() >= googleRetryAt) {
+    async function primaryPage(requestedPage) {
+      const result = { lists: [], sources: [], warnings: [], hasMore: false };
+      if (parseXml) {
+        try {
+          const url = new URL("https://ndlsearch.ndl.go.jp/api/opensearch");
+          url.search = new URLSearchParams({ [field === "author" ? "creator" : field === "isbn" ? "isbn" : field === "title" ? "title" : "any"]: query, cnt: String(BOOK_PAGE_SIZE), idx: String((requestedPage - 1) * BOOK_PAGE_SIZE + 1), dpid: "iss-ndl-opac", mediatype: "books", ...(order === "newest" ? { from: `${new Date().getFullYear() - 1}-01-01` } : {}) }).toString();
+          const data = await request(url, "xml", signal);
+          const channel = data.rss?.channel || {};
+          const items = array(channel.item).map(normalizeNdl);
+          result.lists.push(items); result.sources.push("国立国会図書館サーチ");
+          result.hasMore ||= requestedPage * BOOK_PAGE_SIZE < Number(scalar(channel.totalResults) || items.length);
+        } catch (error) { if (signal?.aborted) throw error; result.warnings.push("国立国会図書館サーチに接続できませんでした。"); }
+      }
       try {
-        const url = new URL("https://www.googleapis.com/books/v1/volumes");
-        url.search = new URLSearchParams({ q: `${{ title: "intitle:", author: "inauthor:", isbn: "isbn:" }[field] || ""}${query}`, startIndex: String((page - 1) * BOOK_PAGE_SIZE), maxResults: String(BOOK_PAGE_SIZE), printType: "books", orderBy: order === "newest" ? "newest" : "relevance", ...(japanese ? { langRestrict: "ja" } : {}), ...(googleKey ? { key: googleKey } : {}) }).toString();
-        const data = await request(url, "json", signal);
-        lists.push((data.items || []).map(normalizeGoogle)); sources.push("Google Books");
-        hasMore ||= (page * BOOK_PAGE_SIZE) < (data.totalItems || 0);
-      } catch (error) { if (signal?.aborted) throw error; if ([400, 403, 429].includes(error.status)) googleRetryAt = Date.now() + 300000; warnings.push("Google Booksを利用できないため、別の書誌データで補完しています。"); }
-    } else warnings.push("Google Booksの制限中のため、別の書誌データで補完しています。");
-    try {
       const url = new URL("https://openlibrary.org/search.json");
-      url.search = new URLSearchParams({ [field === "all" ? "q" : field]: query, page: String(page), limit: String(BOOK_PAGE_SIZE), lang: "ja", fields: "key,title,author_name,isbn,cover_i,publisher,first_publish_year,language,editions,first_sentence", ...(order === "newest" ? { sort: "new" } : {}) }).toString();
+      url.search = new URLSearchParams({ [field === "all" ? "q" : field]: query, page: String(requestedPage), limit: String(BOOK_PAGE_SIZE), lang: "ja", fields: "key,title,author_name,isbn,cover_i,publisher,first_publish_year,language,editions,first_sentence", ...(order === "newest" ? { sort: "new" } : {}) }).toString();
       const job = openLibraryQueue.then(async () => {
         const delay = 1100 - (Date.now() - lastOpenLibrary);
         if (delay > 0) await pause(delay);
@@ -150,25 +154,34 @@ export function createBookProvider({ fetcher = fetch, parseXml, googleKey = "", 
       });
       openLibraryQueue = job.catch(() => {});
       const data = await job;
-      lists.push((data.docs || []).map(normalizeOpenLibrary)); sources.push("Open Library");
-      hasMore ||= page * BOOK_PAGE_SIZE < (data.numFound || data.num_found || 0);
-    } catch (error) { if (signal?.aborted) throw error; warnings.push("Open Libraryに接続できませんでした。"); }
-    if (parseXml && (japanese || field === "isbn")) {
-      try {
-        const url = new URL("https://ndlsearch.ndl.go.jp/api/opensearch");
-        url.search = new URLSearchParams({ [field === "author" ? "creator" : field === "isbn" ? "isbn" : field === "title" ? "title" : "any"]: query, cnt: String(BOOK_PAGE_SIZE), idx: String((page - 1) * BOOK_PAGE_SIZE + 1), dpid: "iss-ndl-opac", ...(order === "newest" ? { from: `${new Date().getFullYear() - 1}-01-01` } : {}) }).toString();
-        const data = await request(url, "xml", signal);
-        const channel = data.rss?.channel || {};
-        const items = array(channel.item).map(normalizeNdl);
-        lists.push(items); sources.push("国立国会図書館サーチ");
-        hasMore ||= page * BOOK_PAGE_SIZE < Number(scalar(channel.totalResults) || items.length);
-      } catch (error) { if (signal?.aborted) throw error; warnings.push("日本語書誌の補完先に接続できませんでした。"); }
+      result.lists.push((data.docs || []).map(normalizeOpenLibrary)); result.sources.push("Open Library");
+      result.hasMore ||= requestedPage * BOOK_PAGE_SIZE < (data.numFound || data.num_found || 0);
+      } catch (error) { if (signal?.aborted) throw error; result.warnings.push("Open Libraryに接続できませんでした。"); }
+      return result;
     }
+    const primary = await primaryPage(page);
+    lists.push(...primary.lists); sources.push(...primary.sources); warnings.push(...primary.warnings); hasMore = primary.hasMore;
+    let missing = mergeBooks(...lists).length === 0;
+    // An exhausted later page is not a failed search. Recheck page one using shared caches.
+    if (missing && page > 1) {
+      const firstCached = cache.get(JSON.stringify([query,field,1,order]));
+      if (primaryFound || (firstCached?.expires > Date.now() && firstCached.value.primaryFound)) missing = false;
+      else { const first = await primaryPage(1); missing = mergeBooks(...first.lists).length === 0; }
+    }
+    if (missing && Date.now() >= googleRetryAt) {
+      try {
+        const url = new URL("https://www.googleapis.com/books/v1/volumes");
+        url.search = new URLSearchParams({ q: `${{ title: "intitle:", author: "inauthor:", isbn: "isbn:" }[field] || ""}${query}`, startIndex: String((page - 1) * BOOK_PAGE_SIZE), maxResults: String(BOOK_PAGE_SIZE), printType: "books", orderBy: order === "newest" ? "newest" : "relevance", ...(japanese ? { langRestrict: "ja" } : {}), ...(googleKey ? { key: googleKey } : {}) }).toString();
+        const data = await request(url, "json", signal);
+        lists.push((data.items || []).map(normalizeGoogle)); sources.push("Google Books");
+        hasMore ||= (page * BOOK_PAGE_SIZE) < (data.totalItems || 0);
+      } catch (error) { if (signal?.aborted) throw error; if ([400, 403, 429].includes(error.status)) googleRetryAt = Date.now() + 300000; warnings.push("補完先のGoogle Booksを利用できませんでした。"); }
+    } else if (missing) warnings.push("Google Booksの制限中です。時間をおいて再検索するか、手入力で追加してください。");
     if (!sources.length) throw new Error("書誌サービスに接続できませんでした。接続を確認して再検索するか、手入力で追加してください。");
     let items = mergeBooks(...lists);
     if (japanese) { const score = (w) => Number(w.language === "ja") * 2 + Number(/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(w.title)); items.sort((a, b) => score(b) - score(a)); }
     if (order === "newest") items.sort((a, b) => (b.publishedAt || "").localeCompare(a.publishedAt || ""));
-    const value = { items, hasMore: hasMore && items.length > 0, warnings, sources };
+    const value = { items, hasMore: hasMore && items.length > 0, warnings, sources, primaryFound: !missing };
     if (cache.size > 100) cache.delete(cache.keys().next().value);
     cache.set(cacheKey, { expires: Date.now() + Math.min(cacheMs, warnings.length ? 30000 : 600000), value });
     return structuredClone(value);
@@ -234,8 +247,11 @@ export function resultCacheMs(value) {
 export function createBookClient({ endpoint, publishableKey, getAccessToken = async () => "", fetcher = fetch } = {}) {
   const direct = createBookProvider({ fetcher, parseXml: typeof DOMParser !== "undefined" ? parseBrowserXml : undefined });
   const cache = new Map();
+  const primaryRoutes = new Map();
   return { async search(options) {
     const { signal, ...parameters } = options;
+    const routeKey = JSON.stringify([parameters.query,parameters.field || "all",parameters.order || "relevance"]);
+    if (parameters.type !== "movie" && Number(parameters.page) > 1 && primaryRoutes.get(routeKey)) parameters.primaryFound = true;
     const key = JSON.stringify(parameters);
     if (cache.get(key)?.expires > Date.now()) {
       const entry = cache.get(key);
@@ -252,7 +268,12 @@ export function createBookClient({ endpoint, publishableKey, getAccessToken = as
       if (!Array.isArray(result.items)) throw new Error("検索結果を読み込めませんでした。再試行してください。");
       value = result;
     }
-    if (!value) value = options.type === "movie" ? await direct.movies(options) : await direct.search(options);
+    if (!value) value = options.type === "movie" ? await direct.movies({ ...parameters, signal }) : await direct.search({ ...parameters, signal });
+    if (parameters.type !== "movie") {
+      if (value.primaryFound) primaryRoutes.set(routeKey,true);
+      else if (!parameters.page || parameters.page === 1) primaryRoutes.delete(routeKey);
+      if (primaryRoutes.size > 100) primaryRoutes.delete(primaryRoutes.keys().next().value);
+    }
     if (cache.size > 100) cache.delete(cache.keys().next().value);
     cache.set(key, { expires: Date.now() + resultCacheMs(value), value });
     return value;
