@@ -1,0 +1,17 @@
+.business-support-root{box-sizing:border-box;max-width:760px;margin:24px auto 96px;padding:16px;width:calc(100% - 32px);color:inherit;font:inherit}
+.business-support-card{border:1px solid #cad3dc;border-radius:14px;background:#fff;color:#22313e;padding:18px;box-sizing:border-box}
+.business-support-card summary{font-weight:700;cursor:pointer;min-height:44px;display:flex;align-items:center}
+.business-support-card p{line-height:1.7;margin:12px 0}
+.business-support-card label{font-weight:600;display:block}
+.business-support-card input{display:block;box-sizing:border-box;width:100%;min-width:0;font:inherit;padding:12px;border:1px solid #8495a3;border-radius:8px;background:#fff;color:#172b3b;margin:8px 0 14px}
+.business-support-actions{display:flex;flex-wrap:wrap;gap:12px}
+.business-support-actions a,.business-support-actions button{font:inherit;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;text-align:center;min-height:44px;padding:10px 14px;border:1px solid #31566d;border-radius:8px;background:#fff;color:#20475f;text-decoration:none;cursor:pointer}
+.business-support-actions a{background:#20475f;color:#fff}
+.business-support-actions button:disabled{opacity:.65;cursor:wait}
+.business-support-actions a:focus-visible,.business-support-actions button:focus-visible,.business-support-card summary:focus-visible{outline:3px solid #ce9d41;outline-offset:3px}
+.business-support-status{min-height:1.7em;overflow-wrap:anywhere}
+.business-support-root[data-support-inline]{width:100%;margin:24px 0}
+.business-support-footer-link{text-align:center;padding:20px 16px 96px}
+.business-support-page{max-width:760px;margin:32px auto;padding:0 16px}
+@media(max-width:480px){.business-support-actions>*{flex:1 1 100%}.business-support-card{padding:14px}.business-support-root{width:calc(100% - 24px);margin-left:12px;margin-right:12px}}
+
