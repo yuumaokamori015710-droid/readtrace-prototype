@@ -48,7 +48,7 @@ const esc = (value) =>
       ],
   );
 const icon = (name) => ["book-open", "clapperboard"].includes(name)
-  ? '<img class="media-mark" src="./assets/readtrace-mark.png" alt="" aria-hidden="true" width="27" height="20">'
+  ? '<img class="media-mark" src="./assets/readtrace-mark-web.png" alt="" aria-hidden="true" width="27" height="20">'
   : `<i data-lucide="${name}" aria-hidden="true"></i>`;
 const user = (id) => store.data.users.find((u) => u.id === id);
 const mine = () => user(viewer);

@@ -5,6 +5,8 @@
 - Google sign-in button markup/styles derive from the official HTML configurator on the branding page (light rectangle, Japanese label, standard-color logo). Integration keeps the existing Supabase OAuth handler; it is not a Google Identity Services SDK-rendered button.
 
 - `readtrace-mark.png`: approved "pages and play" ReadTrace mark, generated for this project; transparent charcoal symbol shared by book/movie themes.
+- `readtrace-mark-web.png`: lightweight transparent export of the same approved mark, with outer padding removed. Used by the in-app header and media icons; the original artwork is retained unchanged.
+- `favicon-96.png`, `../favicon.ico` (16/32/48px PNG frames), `apple-touch-icon.png` (180px): square exports of that mark on the app's light paper background, for browser tabs/history and iOS home-screen shortcuts. Explicit relative links on both entry pages support the GitHub Pages subpath. No service worker or new install/auth behavior is introduced.
 - `supabase-2.119.0.js`: Supabase JavaScript SDK 2.119.0, from the official npm package via jsDelivr; MIT license in `SUPABASE-LICENSE`. Loaded only when Auth is configured.
 
 - `lucide.min.js`: Lucide 0.468.0, distributed by https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js (ISC license; original license header retained).
