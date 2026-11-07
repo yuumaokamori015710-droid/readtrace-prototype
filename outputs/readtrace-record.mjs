@@ -26,6 +26,7 @@ export function impressionError(value, required) {
   const text = (value || "").trim();
   if (!text && required) return "一言感想を入力してください。";
   if (/[\r\n\u2028\u2029]/u.test(value || "")) return "一言感想は1行で入力してください。";
+  if (new TextEncoder().encode(text).length > 8192) return "一言感想のデータが長すぎます。結合文字を減らしてください。";
   if (impressionLength(text) > IMPRESSION_LIMIT) return "一言感想は20文字以内で入力してください。";
   return "";
 }

@@ -8,7 +8,7 @@ import {
 import { createCoverOrbit } from "./readtrace-orbit.mjs?v=shelf-notes-1";
 import { authConfig } from "./readtrace-config.mjs";
 import { createAuth, emptyAccountData } from "./readtrace-auth.mjs";
-import { createBookClient, discoverySections, mergeBooks, canonicalIsbn, resultCacheMs } from "./readtrace-books.mjs?v=primary-stars-1";
+import { createBookClient, discoverySections, mergeBooks, workIdentity, canonicalIsbn, resultCacheMs } from "./readtrace-books.mjs?v=primary-stars-1";
 import { ratingPicker, syncRatingPicker } from "./readtrace-rating.mjs?v=shelf-notes-1";
 import { createCloudStore } from "./readtrace-cloud.mjs?v=shelf-notes-1";
 import { AXES, IMPRESSION_LIMIT, impressionLength, impressionError, impressionState, ratingSummary, readAxes, localDate, completionLabel } from "./readtrace-record.mjs";
@@ -40,8 +40,7 @@ const revealedImpressions = new Set();
 const books = createBookClient({ endpoint: `${authConfig.url}/functions/v1/readtrace-books`, publishableKey: authConfig.publishableKey, getAccessToken: async () => (await auth.client?.auth.getSession())?.data?.session?.access_token || "" });
 const works = new Map(catalog.map((work) => [work.id, work]));
 const discoveryCache = new Map();
-const recommendationCache = new Map();
-const recommendationVisits = new Map();
+let recommendationState = null;
 const pendingRecommendations = new Set();
 let searchField = "all", searchOrder = "relevance", searchPage = 1, searchResults = [], searchMore = false;
 let searchController, searchTimer, searchVersion = 0, discoveryObserver;
@@ -113,6 +112,7 @@ function setSession(id) {
     ? localStorage.setItem(SESSION_KEY, id)
     : localStorage.removeItem(SESSION_KEY);
   view = { type: "book", filter: "all", query: "", sort: "added" };
+  recommendationState = null;
   revealed.clear();
   revealedImpressions.clear();
   closeModal();
@@ -374,6 +374,10 @@ function renderShelfGrid() {
       onOpen: record => navigate(`/record/${record.id}`),
       onSelect(record, index) {
         shelfSelection.set(key, record.id);
+        if (records.length === 2) {
+          $(".orbit-prev").disabled = index === 0;
+          $(".orbit-next").disabled = index === 1;
+        }
         $('#orbit-caption').innerHTML = `<span class="orbit-counter">${index + 1} / ${records.length}</span>
           <h2><a href="#/record/${record.id}">${esc(record.work.title)}</a></h2>
           ${impression(record, { showMissing: true })}
@@ -556,6 +560,7 @@ function render() {
   icons();
 }
 window.addEventListener("hashchange", async () => {
+  recommendationState = null;
   view.filter = "all";
   view.query = "";
   revealed.clear();
@@ -634,8 +639,8 @@ function openWorkDetail(work, recommend = false) {
 }
 function recommendationVisit(type) {
   const key = JSON.stringify([viewer, type]);
-  if (!recommendationVisits.has(key)) recommendationVisits.set(key, { limit: 3, added: [] });
-  return recommendationVisits.get(key);
+  if (recommendationState?.key !== key) recommendationState = { key, limit: 3, added: [], entry: null };
+  return recommendationState;
 }
 function recommendButton(work, saved = store.visible(viewer, viewer).some(r => sameWork(r.work, work))) {
   const pending = pendingRecommendations.has(JSON.stringify([viewer, work.id]));
@@ -649,17 +654,15 @@ function hydrateRecommendations() {
   const records = store.visible(viewer, viewer);
   const visit = recommendationVisit(type);
   const query = recommendationQuery(type, records.filter(r => !visit.added.some(work => sameWork(work, r.work))), catalog);
-  const key = JSON.stringify([type, query]);
-  target.dataset.queryKey = key;
-  let entry = recommendationCache.get(key);
-  if (!entry) {
-    entry = { state: "loading", items: [] };
-    recommendationCache.set(key, entry);
+  let entry = visit.entry;
+  if (!entry || entry.query !== query) {
+    entry = { query, state: "loading", items: [] };
+    visit.entry = entry;
     void books.search({ type, query, page: 1 }).then(result => {
       entry.state = result.warnings?.length && !result.items.length ? "error" : "ready";
       entry.items = result.items.slice(0, 20);
     }).catch(() => { entry.state = "error"; }).finally(() => {
-      if ($("#recommend-list")?.dataset.queryKey === key) hydrateRecommendations();
+      if (recommendationState === visit && visit.entry === entry) hydrateRecommendations();
     });
   }
   if (entry.state === "loading") {
@@ -707,9 +710,9 @@ function hydrateDiscovery() {
   }), { rootMargin: "180px" });
   document.querySelectorAll("[data-discovery]").forEach((node) => discoveryObserver.observe(node));
 }
-function openEditor(work, record = null, manual = false) {
+function openEditor(work, record = null, manual = false, initialStatus = "done") {
   editing = { work: { ...work }, record, manual, dateInitialized: record?.status === "done" || Boolean(record?.completedAt) };
-  const r = record || { status: "done", visibility: "public" };
+  const r = record || { status: initialStatus, visibility: "public" };
   const values = readAxes(r.axisRatings);
   const unknown = r.status === "done" && !r.completedAt && Boolean(record);
   const completed = r.completedAt || (!record ? localDate() : "");
@@ -787,16 +790,16 @@ function updateAxis(row, value) {
   clear.disabled = value === null;
   updateAxisSummary();
 }
-function selectWork(work) {
+function selectWork(work, initialStatus = "done") {
   if (!work) return;
   const existing = store
     .visible(viewer, viewer)
-    .find((r) => sameWork(r.work, work));
+    .find((r) => workIdentity(r.work) === workIdentity(work));
   if (existing) {
     closeModal();
     navigate(`/record/${existing.id}`);
     toast("この作品はすでに棚にあります");
-  } else openEditor(work);
+  } else openEditor(work, null, false, initialStatus);
 }
 function openAccount() {
   if (authState.user) {
@@ -954,7 +957,7 @@ document.addEventListener("click", async (event) => {
       $("#recommend-list [data-action='recommend-more']")?.focus();
     }
     else if (a === "recommend-retry") {
-      recommendationCache.delete($("#recommend-list")?.dataset.queryKey);
+      recommendationVisit(view.type).entry = null;
       hydrateRecommendations();
     }
     else if (a === "recommend-add") {
@@ -963,10 +966,11 @@ document.addEventListener("click", async (event) => {
       if (currentStore.visible(requester, requester).some(r => sameWork(r.work, work))) return toast("この作品はすでに棚にあります");
       pendingRecommendations.add(key);
       b.disabled = true;
+      const visit = recommendationVisit(work.type);
       try {
         const saved = await currentStore.save({ work, status: "want", rating: null, visibility: "public", spoiler: false }, requester);
         if (!sameAccount()) return;
-        recommendationVisit(work.type).added.push(work);
+        visit.added.push(work);
         shelfSelection.set(JSON.stringify([viewer, viewer, work.type, "", "want"]), saved.id);
         if (modal.open && b.isConnected) closeModal();
         render();
@@ -974,6 +978,7 @@ document.addEventListener("click", async (event) => {
       } finally {
         pendingRecommendations.delete(key);
         if (b.isConnected) b.disabled = false;
+        else if (sameAccount()) hydrateRecommendations();
       }
     }
     else if (a === "discover-more") {
@@ -984,7 +989,7 @@ document.addEventListener("click", async (event) => {
     else if (a === "search-more") { searchPage++; void renderCatalog(true); }
     else if (a === "search-retry") void renderCatalog();
     else if (a === "shelf-options") openShelfOptions();
-    else if (a === "reset-shelf-filters") { closeModal(); view.ratingFilter = "all"; view.addedAfter = ""; view.query = ""; view.filter = "all"; render(); }
+    else if (a === "reset-shelf-filters") { closeModal(); recommendationState = null; view.ratingFilter = "all"; view.addedAfter = ""; view.query = ""; view.filter = "all"; render(); }
     else if (a === 'shelf-view') {
       shelfView = b.dataset.view;
       localStorage.setItem(SHELF_VIEW_KEY, shelfView);
@@ -994,6 +999,7 @@ document.addEventListener("click", async (event) => {
     else if (a === 'orbit-next') orbitController?.step(1);
     else if (a === "shelf-type") {
       const c = shelfContext();
+      if (view.type !== b.dataset.type) recommendationState = null;
       view.type = b.dataset.type;
       view.filter = "all";
       view.query = "";
@@ -1002,6 +1008,7 @@ document.addEventListener("click", async (event) => {
       if (c.shared) navigate(`/share/${c.owner}/${view.type}/${c.shared}`);
       else render();
     } else if (a === "filter") {
+      if (view.filter !== b.dataset.filter) recommendationState = null;
       view.filter = b.dataset.filter;
       render();
     } else if (a === "search-type") {
@@ -1018,8 +1025,9 @@ document.addEventListener("click", async (event) => {
         },
         null,
         true,
+        route() === "/shelf" && view.filter === "want" ? "want" : "done",
       );
-    else if (a === "select-work") selectWork(works.get(id));
+    else if (a === "select-work") selectWork(works.get(id), route() === "/shelf" && view.filter === "want" ? "want" : "done");
     else if (a === "clear-axis") updateAxis(b.closest("[data-axis]"), null);
     else if (a === "reveal-impression" && store.get(id, viewer)) {
       revealedImpressions.add(id);
@@ -1032,7 +1040,7 @@ document.addEventListener("click", async (event) => {
         openEditor(r.work, r, !catalog.some((w) => w.id === r.work.id));
     } else if (a === "save-work") {
       const r = store.get(id, viewer);
-      if (r) selectWork(r.work);
+      if (r) selectWork(r.work, "want");
     } else if (a === "delete-record") {
       const r = store.get(id, viewer);
       if (r?.userId === viewer)
@@ -1290,6 +1298,7 @@ function openImport() {
 async function startCloud(identity) {
   if (!identity) return;
   const version = ++accountVersion;
+  recommendationState = null;
   store.dispose?.();
   store = createStore({ getItem: () => null, setItem() {} }, { seed: () => emptyAccountData(identity) });
   viewer = identity.id;

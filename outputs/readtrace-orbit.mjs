@@ -124,7 +124,7 @@ export function createCoverOrbit(root, { records, imageFor, coverFor, initialInd
     schedule();
   };
   const choose = (index) => {
-    target = records.length <= 2 ? (records.length === 1 ? 0 : wrap(index, 2)) : index;
+    target = records.length <= 2 ? Math.max(0, Math.min(records.length - 1, index)) : index;
     selected = wrap(Math.round(target), records.length);
     onSelect(records[selected], selected);
     canvas.dataset.selectedId = records[selected].id;
@@ -134,16 +134,21 @@ export function createCoverOrbit(root, { records, imageFor, coverFor, initialInd
   const down = event => {
     if (event.button !== 0 || pointer) return;
     pointer = { id: event.pointerId, x: event.clientX, y: event.clientY, start: position, lastX: event.clientX, lastTime: performance.now(), velocity: 0, horizontal: false };
+    canvas.setPointerCapture(event.pointerId);
     yaw = 0;
     blockClick = false;
   };
   const move = event => {
     if (!pointer || event.pointerId !== pointer.id) return;
     const dx = event.clientX - pointer.x, dy = event.clientY - pointer.y;
-    if (!pointer.horizontal && Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 9) { pointer = null; blockClick = true; return; }
+    if (!pointer.horizontal && Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 9) {
+      pointer = null;
+      blockClick = true;
+      if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+      return;
+    }
     if (Math.abs(dx) > 8 && !pointer.horizontal) {
       pointer.horizontal = true;
-      canvas.setPointerCapture(event.pointerId);
     }
     if (!pointer.horizontal) return;
     blockClick = true;
@@ -164,7 +169,7 @@ export function createCoverOrbit(root, { records, imageFor, coverFor, initialInd
     if (horizontal) {
       const intended = Math.round(target - Math.max(-0.5, Math.min(0.5, velocity * 0.18)));
       const delta = event.clientX - pointerStart;
-      if (records.length === 2 && Math.abs(delta) > 28) choose(1 - selected);
+      if (records.length === 2 && Math.abs(delta) > 28) choose(selected - Math.sign(delta));
       else if (records.length > 2 && wrap(intended, records.length) === selected && Math.abs(delta) > 32)
         choose(Math.round(target) - Math.sign(delta));
       else choose(intended);
@@ -187,7 +192,7 @@ export function createCoverOrbit(root, { records, imageFor, coverFor, initialInd
     if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); step(event.key === 'ArrowLeft' ? -1 : 1); }
     if (event.key === 'Enter') onOpen(records[selected]);
   };
-  const listeners = { pointerdown: down, pointermove: move, pointerup: up, pointercancel: cancel, click, keydown: keys };
+  const listeners = { pointerdown: down, pointermove: move, pointerup: up, pointercancel: cancel, lostpointercapture: cancel, click, keydown: keys };
   Object.entries(listeners).forEach(([name, fn]) => canvas.addEventListener(name, fn));
   const schedule = () => {
     if (!disposed && !paused && !document.hidden && !frame) frame = requestAnimationFrame(draw);
@@ -204,11 +209,13 @@ export function createCoverOrbit(root, { records, imageFor, coverFor, initialInd
       const raw = index - position;
       const relative = records.length > 2 ? wrap(raw + records.length / 2, records.length) - records.length / 2 : raw;
       const distance = Math.abs(relative);
-      if (distance >= 2.1 || visible.has(index)) continue;
+      if (distance >= 1.5 || visible.has(index)) continue;
       visible.add(index);
       if (!cards.has(index)) cards.set(index, addCard(index));
       const card = cards.get(index);
-      const x = relative * Math.min(2.22, halfWidth * 0.89);
+      const spacing = Math.min(2.22, halfWidth * 0.89);
+      // Move the departing cover outside the stage before it wraps to the other side.
+      const x = Math.sign(relative) * (Math.min(distance, 1) * spacing + Math.max(0, distance - 1) * 2 * (halfWidth + 1 - spacing));
       const scale = 1 - Math.min(1.6, distance) * 0.25;
       const rotation = -relative * 0.48 + yaw * Math.max(0, 1 - distance);
       if (card.mesh) {

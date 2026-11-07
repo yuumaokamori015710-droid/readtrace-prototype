@@ -25,7 +25,7 @@ The initial community discovery window is 300 public records. Own records, follo
 
 ## Existing Data
 
-Guest records are stored under `readtrace:guest:v1`. The existing `readtrace:books-films:v2` demo database and `readtrace:account:<auth-user-id>:v1` local Google-account databases are left intact. After real login, the account menu can import selected guest/old-account/demo shelves. Imports preserve work, rating, review, status, dates, privacy and available history, skip canonical duplicates, and never delete the source. Local demos are explicitly labelled; Google identities cannot be selected through demo login.
+Guest records are stored under `readtrace:guest:v1`. The existing `readtrace:books-films:v2` demo database and `readtrace:account:<auth-user-id>:v1` local Google-account databases are left intact. After real login, the account menu can import selected guest/old-account shelves, but demo shelves are intentionally not offered for import. Imports preserve work, legacy rating, axis ratings, one-line impression, review, status, dates, privacy and available history, skip canonical duplicates, and never delete the source. Local demos are explicitly labelled; Google identities cannot be selected through demo login.
 
 Guest sharing requires Google login and cloud import. Cloud sharing adds an explicit cloud marker and always requires real Auth; choosing a demo/guest user cannot reveal cloud records. Nonpublic rows are also denied through the REST API, regardless of UI state. Spoiler text is absent from unrevealed DOM/list/share previews.
 
