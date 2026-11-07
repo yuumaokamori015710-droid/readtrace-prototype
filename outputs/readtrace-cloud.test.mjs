@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createCloudStore, recordFromRow, recordToRow, profileFor } from "./readtrace-cloud.mjs";
 import { validateRecord } from "./readtrace-store.mjs";
 const identity = { id: "11111111-1111-4111-8111-111111111111", user_metadata: { full_name: "読者 A", picture: "https://example.com/avatar.jpg" } };
-const record = { work: { id: "book1", type: "book", title: "こころ", isbn: "4101010137" }, status: "done", rating: 4.5, review: "", spoiler: true, visibility: "private", startedAt: "2026-11-01", completedAt: "2026-11-03" };
+const record = { work: { id: "book1", type: "book", title: "こころ", isbn: "4101010137" }, status: "done", rating: 4.5, impression: "静かな余韻", axisRatings: { afterglow: 5 }, review: "", spoiler: true, visibility: "private", startedAt: "2026-11-01", completedAt: "2026-11-03" };
 function clientFixture() {
   const tables = Object.fromEntries(["profiles", "records", "settings", "follows", "likes", "comments"].map((name) => [`readtrace_${name}`, []]));
   const calls = []; let failWrites = false;
@@ -33,6 +33,8 @@ test("cloud row conversion preserves dates, ratings, spoiler/privacy and canonic
   assert.equal(row.work.isbn13, "9784101010137"); assert.equal(row.started_at, "2026-11-01");
   const restored = recordFromRow({ ...row, id: "saved", created_at: "2026-11-01T00:00:00Z" });
   assert.equal(restored.rating, 4.5); assert.equal(restored.spoiler, true); assert.equal(restored.visibility, "private"); assert.equal(restored.completedAt, record.completedAt);
+  assert.equal(restored.impression, record.impression);
+  assert.deepEqual(restored.axisRatings, record.axisRatings);
 });
 test("profile contains name/avatar but never emails or authorization metadata", () => {
   assert.deepEqual(Object.keys(profileFor(identity)), ["id", "name", "avatar_url"]);
@@ -53,9 +55,11 @@ test("failed cloud writes do not claim success or change memory", async () => {
 });
 test("imports skip canonical duplicates and do not mutate the source", async () => {
   const fixture = clientFixture(), store = createCloudStore(fixture.client, identity); await store.init();
-  const source = structuredClone(record);
+  const source = { ...structuredClone(record), impression: null, axisRatings: undefined };
   const result = await store.importRecords([source, { ...source, work: { ...source.work, id: "other-api", isbn: "9784101010137" } }]);
-  assert.equal(result.imported, 1); assert.equal(result.skipped, 1); assert.deepEqual(source, record);
+  assert.equal(result.imported, 1); assert.equal(result.skipped, 1);
+  assert.equal(source.impression, null); assert.equal(source.rating, record.rating);
+  assert.deepEqual(store.data.records[0].axisRatings, {});
 });
 test("disposed stores and forged owners cannot write", async () => {
   const fixture = clientFixture(), store = createCloudStore(fixture.client, identity); await store.init();

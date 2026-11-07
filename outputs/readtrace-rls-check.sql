@@ -40,7 +40,7 @@ begin
   begin
     insert into public.readtrace_records(work,status,visibility) values('{"id":"no-rating","type":"book","title":"Invalid completion"}','done','private');
   exception when check_violation then denied = true; end;
-  if not denied then raise exception 'Unrated completion allowed'; end if;
+  if not denied then raise exception 'Completion with neither impression nor legacy rating allowed'; end if;
   denied = false;
   begin
     insert into public.readtrace_comments(record_id,text) values('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','Not allowed');
@@ -59,10 +59,42 @@ begin
   if (select count(*) from public.readtrace_comments where record_id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb') <> 1 then raise exception 'Public comment unavailable'; end if;
 end;
 $$;
+update public.readtrace_records
+set status='done', impression='一言のテスト', completed_at='2026-11-07', axis_ratings='{"immersion":0.5,"afterglow":5}', spoiler=true
+where id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+insert into public.readtrace_records(work,status,impression,visibility)
+values('{"id":"test-unrated","type":"movie","title":"Unrated fixture"}','done','余韻','private');
+do $$
+begin
+  if not exists (select 1 from public.readtrace_records
+    where id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' and rating is null and review='private-marker'
+      and impression='一言のテスト' and completed_at='2026-11-07' and spoiler and visibility='private'
+      and history->-1->'axisRatings' = '{"immersion":0.5,"afterglow":5}'::jsonb)
+  then raise exception 'New fields or history were not preserved'; end if;
+  if not exists (select 1 from public.readtrace_records where work->>'id'='test-unrated'
+    and status='done' and completed_at is null and rating is null and axis_ratings='{}')
+  then raise exception 'Unrated completion or unknown date could not be saved'; end if;
+  if not exists (select 1 from public.readtrace_records where id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    and rating=4.5 and impression is null and axis_ratings='{}')
+  then raise exception 'Legacy score was changed'; end if;
+  begin
+    update public.readtrace_records set axis_ratings='{"immersion":0.6}' where id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    raise exception 'Fractional axis outside half-point steps accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    update public.readtrace_records set impression=E'line\nbreak' where id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    raise exception 'Multi-line impression accepted';
+  exception when check_violation then null;
+  end;
+end;
+$$;
 update public.readtrace_records set visibility='private' where id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 select set_config('request.jwt.claims','{"sub":"22222222-2222-4222-8222-222222222222","role":"authenticated"}',true);
 do $$
 begin
+  if exists (select 1 from public.readtrace_records where id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+  then raise exception 'Private new record fields leaked'; end if;
   if (select count(*) from public.readtrace_comments where record_id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb') <> 0 then raise exception 'Comment leaked after privacy change'; end if;
   if (select count(*) from public.readtrace_likes where record_id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb') <> 0 then raise exception 'Like leaked after privacy change'; end if;
 end;
@@ -78,4 +110,4 @@ end;
 $$;
 reset role;
 rollback;
-select 'passed: 15 DB assertions; all fixtures rolled back' as result;
+select 'passed: 21 DB assertions; all fixtures rolled back' as result;

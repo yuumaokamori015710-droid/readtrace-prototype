@@ -53,24 +53,26 @@ test("非公開記録は本人の棚にのみ存在し、別ユーザーの棚�
   assert.ok(!store.visible("shiori", "haru").some((r) => r.id === "r18"));
   assert.equal(visibleTo(store.get("r8", "shiori"), "kenta"), false);
 });
-test("完了時は評価が必要だが、感想と完了日は空でも保存できる", () => {
+test("完了時は一言が必要だが、評価・長文・完了日は任意", () => {
   const { store } = fixture();
   const r = { ...draft(), status: "done" };
-  assert.throws(() => store.save(r, "shiori"), /評価/);
-  const saved = store.save({ ...r, rating: 0.5 }, "shiori");
+  assert.throws(() => store.save(r, "shiori"), /一言/);
+  const saved = store.save({ ...r, impression: "面白かった" }, "shiori");
+  assert.equal(saved.rating, null);
+  assert.deepEqual(saved.axisRatings, {});
   assert.equal(saved.review, "");
   assert.equal(saved.completedAt, "");
 });
-test("本・映画とも0.5刻みの全評価を受け入れ、それ以外を拒否する", () => {
+test("本・映画とも5軸は0.5刻みの全評価を受け入れ、それ以外を拒否する", () => {
   for (const type of ["book", "movie"]) {
     for (let rating = 0.5; rating <= 5; rating += 0.5)
       assert.equal(
-        validateRecord({ ...draft(type), status: "done", rating }),
+        validateRecord({ ...draft(type), status: "done", impression: "余韻", axisRatings: { immersion: rating } }),
         "",
       );
     for (const rating of [0, -1, 5.5, 2.2, NaN, Infinity])
       assert.match(
-        validateRecord({ ...draft(type), status: "done", rating }),
+        validateRecord({ ...draft(type), status: "done", impression: "余韻", axisRatings: { immersion: rating } }),
         /評価/,
       );
   }
@@ -100,14 +102,15 @@ test("自分の記録の編集・削除と、所有者以外の操作の拒否",
     {
       ...r,
       status: "done",
-      rating: 4.5,
+      axisRatings: { immersion: 4.5 },
+      impression: "続きが気になる",
       visibility: "private",
       spoiler: true,
       review: "個人メモ",
     },
     "shiori",
   );
-  assert.equal(store.get(r.id, "shiori").rating, 4.5);
+  assert.equal(store.get(r.id, "shiori").axisRatings.immersion, 4.5);
   assert.equal(store.get(r.id, "haru"), undefined);
   store.remove(r.id, "shiori");
   assert.equal(store.get(r.id, "shiori"), undefined);

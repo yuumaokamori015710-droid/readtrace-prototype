@@ -1,16 +1,19 @@
-import { catalog } from "./readtrace-data.mjs";
+import { catalog } from "./readtrace-data.mjs?v=shelf-notes-1";
 import {
   createStore,
   SESSION_KEY,
   labels,
   socialRecord,
-} from "./readtrace-store.mjs";
-import { createCoverOrbit } from "./readtrace-orbit.mjs";
+} from "./readtrace-store.mjs?v=shelf-notes-1";
+import { createCoverOrbit } from "./readtrace-orbit.mjs?v=shelf-notes-1";
 import { authConfig } from "./readtrace-config.mjs";
 import { createAuth, emptyAccountData } from "./readtrace-auth.mjs";
-import { createBookClient, discoverySections, mergeBooks, workIdentity, canonicalIsbn, resultCacheMs } from "./readtrace-books.mjs?v=primary-stars-1";
-import { ratingPicker, syncRatingPicker } from "./readtrace-rating.mjs?v=primary-stars-1";
-import { createCloudStore } from "./readtrace-cloud.mjs";
+import { createBookClient, discoverySections, mergeBooks, canonicalIsbn, resultCacheMs } from "./readtrace-books.mjs?v=primary-stars-1";
+import { ratingPicker, syncRatingPicker } from "./readtrace-rating.mjs?v=shelf-notes-1";
+import { createCloudStore } from "./readtrace-cloud.mjs?v=shelf-notes-1";
+import { AXES, IMPRESSION_LIMIT, impressionLength, impressionError, impressionState, ratingSummary, readAxes, localDate, completionLabel } from "./readtrace-record.mjs";
+
+import { sameWork, rankRecommendations, recommendationQuery } from "./readtrace-recommend.mjs";
 
 const app = document.querySelector("#app");
 const modal = document.querySelector("#modal");
@@ -27,13 +30,19 @@ let searchType = "book",
   editing = null,
   authMode = "login";
 let toastTimer, lastFocus;
-const mobileShelf = matchMedia('(max-width: 800px)');
-let shelfView = localStorage.getItem('readtrace:shelf-view:v1') || 'grid';
+const SHELF_VIEW_KEY = 'readtrace:shelf-view:v2';
+let shelfView = localStorage.getItem(SHELF_VIEW_KEY) === 'grid' ? 'grid' : 'orbit';
+const shelfSelection = new Map();
+let orbitIntroduced = false;
 let orbitController = null;
 const revealed = new Set();
+const revealedImpressions = new Set();
 const books = createBookClient({ endpoint: `${authConfig.url}/functions/v1/readtrace-books`, publishableKey: authConfig.publishableKey, getAccessToken: async () => (await auth.client?.auth.getSession())?.data?.session?.access_token || "" });
 const works = new Map(catalog.map((work) => [work.id, work]));
 const discoveryCache = new Map();
+const recommendationCache = new Map();
+const recommendationVisits = new Map();
+const pendingRecommendations = new Set();
 let searchField = "all", searchOrder = "relevance", searchPage = 1, searchResults = [], searchMore = false;
 let searchController, searchTimer, searchVersion = 0, discoveryObserver;
 let discoveryQueue = Promise.resolve();
@@ -69,7 +78,7 @@ const countComments = (id) =>
 const isLiked = (id) =>
   store.data.likes.some(([a, b]) => a === viewer && b === id);
 const action = (name, text, extra = "", cls = "btn") =>
-  `<button type="button" class="${cls}" data-action="${name}" ${name === "add" ? 'aria-label="作品を追加" title="作品を追加"' : ""} ${extra}>${text}</button>`;
+  `<button type="button" class="${cls}" data-action="${name}" ${name === "add" && !extra.includes('data-first') ? 'aria-label="作品を追加" title="作品を追加"' : ""} ${extra}>${text}</button>`;
 function googleLoginButton() {
   return `<button type="button" class="gsi-material-button google-login" data-action="google-login" ${authState.busy ? 'disabled aria-busy="true"' : ""}>
     <span class="gsi-material-button-state" aria-hidden="true"></span>
@@ -105,12 +114,40 @@ function setSession(id) {
     : localStorage.removeItem(SESSION_KEY);
   view = { type: "book", filter: "all", query: "", sort: "added" };
   revealed.clear();
+  revealedImpressions.clear();
   closeModal();
   render();
+  window.scrollTo(0, 0);
 }
 function stars(value) {
   if (value === null || value === undefined) return "";
-  return `<span class="rating" aria-label="5点中${value}点"><span class="stars" aria-hidden="true"><span class="stars-base">${icon("star").repeat(5)}</span><span class="stars-fill" style="--fill:${(value / 5) * 100}%">${icon("star").repeat(5)}</span></span><span>${value.toFixed(1)}</span></span>`;
+  return `<span class="rating" aria-label="5点中${value.toFixed(1)}点"><span class="stars" aria-hidden="true"><span class="stars-base">${icon("star").repeat(5)}</span><span class="stars-fill" style="--fill:${(value / 5) * 100}%">${icon("star").repeat(5)}</span></span><span>${value.toFixed(1)}</span></span>`;
+}
+function recordRating(record, { showUnrated = true } = {}) {
+  const { average, count, legacy } = ratingSummary(record);
+  if (average !== null) return `<span class="rating-summary">${stars(average)}${count < 5 ? '<small>暫定</small>' : ''}</span>`;
+  if (legacy !== null) return `<span class="rating-summary"><small>旧評価</small>${stars(legacy)}</span>`;
+  return showUnrated ? '<span class="rating-summary muted">未評価</span>' : "";
+}
+function completionDate(record) {
+  const label = completionLabel(record);
+  if (!label) return "";
+  return record.completedAt ? `<time class="completion-date" datetime="${esc(record.completedAt)}">${esc(label)}</time>` : `<span class="completion-date">${label}</span>`;
+}
+function impression(record, { reveal = true, showMissing = false } = {}) {
+  const state = impressionState(record, reveal && revealedImpressions.has(record.id));
+  if (state.kind === "text") return `<p class="impression-text">${esc(state.text)}</p>`;
+  if (state.kind === "spoiler") return reveal
+    ? action("reveal-impression", icon("eye-off") + "ネタバレを含む一言を見る", `data-id="${esc(record.id)}"`, "btn spoiler-impression")
+    : '<span class="field-hint">ネタバレを含む一言</span>';
+  return showMissing && record.status === "done" ? '<p class="field-hint">ひとこと未登録</p>' : "";
+}
+function axisDetail(record) {
+  const { count, legacy } = ratingSummary(record);
+  const values = readAxes(record.axisRatings);
+  return `<details class="record-fold"><summary>5軸評価 <span class="field-hint">${count} / 5項目評価済み</span></summary>
+    <div class="axis-detail">${AXES.map(({ key, label }) => `<div><strong>${label}</strong>${values[key] ? stars(values[key]) : '<span class="muted">未評価</span>'}</div>`).join("")}</div>
+    ${legacy !== null && count ? `<div class="rating-summary"><small>旧評価</small>${stars(legacy)}</div>` : ""}</details>`;
 }
 function imageForWork(work) {
   const localImages = ["b2", "b3", "b5", "b16", "m3", "m4", "m6"];
@@ -157,13 +194,14 @@ function statusBadge(r) {
   return `<span class="badge ${r.status}">${r.status === "done" ? icon("check") : ""}${labels[r.work.type][r.status]}</span>`;
 }
 function empty(title, copy, button = "") {
-  return `<div class="empty">${icon("book-open")}<h2>${title}</h2><p>${copy}</p>${button}</div>`;
+  return `<div class="empty">${icon("book-open")}<h2>${title}</h2>${copy ? `<p>${copy}</p>` : ""}${button}</div>`;
 }
 function showModal(title, content) {
   delete modal.dataset.media;
-  lastFocus = document.activeElement;
+  if (!modal.open) lastFocus = document.activeElement;
   modal.innerHTML = `<div class="dialog-head"><h2 id="modal-title">${title}</h2>${action("close", icon("x"), 'aria-label="閉じる" title="閉じる"', "icon-btn")}</div><div class="dialog-body">${content}</div>`;
   if (!modal.open) modal.showModal();
+  orbitController?.pause(true);
   icons();
 }
 function closeModal() {
@@ -171,8 +209,10 @@ function closeModal() {
   clearTimeout(searchTimer);
   searchVersion++;
   if (modal.open) modal.close();
+  orbitController?.pause(false);
   lastFocus?.isConnected && lastFocus.focus();
 }
+modal.addEventListener("close", () => orbitController?.pause(false));
 modal.addEventListener("click", (event) => {
   if (event.target === modal) {
     const rect = modal.getBoundingClientRect();
@@ -188,7 +228,7 @@ modal.addEventListener("click", (event) => {
 
 function authScreen() {
   const returning = route() !== "/shelf";
-  app.innerHTML = `<main class="auth-page" id="main"><section class="auth-art"><a class="brand" href="#/shelf">${icon("book-open")}ReadTrace</a><h1>本と映画、そのあとに<br>残るもの。</h1><p>読みたい一冊も、忘れたくない一本も。<br>自分だけの棚に、少しずつ。</p><div class="auth-covers">${cover(catalog[2])}${cover(catalog[32])}${cover(catalog[0])}</div></section><section class="auth-form"><span class="eyebrow">YOUR READING & CINEMA</span><h2>あなたの棚へ</h2><p>初めての方も、Googleアカウントで始められます。</p>${returning ? '<p class="auth-return">ログイン後に、開こうとしたページへ戻ります。</p>' : ""}${googleLoginButton()}<div id="auth-error" class="error" role="alert">${esc(authState.error)}</div>${!authState.configured ? '<p class="auth-note">Googleログインは接続設定の準備中です。</p>' : ""}<p class="auth-note">Googleのパスワードを、このアプリに入力する必要はありません。記録は現在、このブラウザ内に保存されます。</p><details class="demo-options" ${authMode === "register" ? "open" : ""}><summary>デモを試す</summary><span class="demo-label">DEMO / パスワード不要</span>${authMode === "login" ? `<div class="demo-users">${demoStore.data.users.map((u) => `<button class="demo-user" data-action="login" data-id="${u.id}">${avatar(u)}<span><strong>${esc(u.name)}</strong><small>このブラウザだけのデモユーザー</small></span>${icon("arrow-right")}</button>`).join("")}</div>${action("auth-register", "デモ用の棚をつくる " + icon("arrow-right"), "", "text-btn")}` : `<form id="register-form" class="register-form" novalidate><label>デモの表示名 <span class="muted">必須</span><input name="name" required maxlength="30" autocomplete="nickname" placeholder="あなたの名前"></label><div id="register-error" class="error" role="alert"></div><button class="btn primary" type="submit">デモを始める ${icon("arrow-right")}</button>${action("auth-login", "デモユーザーを選ぶ", "", "text-btn")}</form>`}</details></section></main>`;
+  app.innerHTML = `<main class="auth-page" id="main"><section class="auth-art"><a class="brand" href="#/shelf">${icon("book-open")}ReadTrace</a></section><section class="auth-form"><span class="eyebrow">YOUR READING & CINEMA</span><h2>あなたの棚へ</h2><p>初めての方も、Googleアカウントで始められます。</p>${returning ? '<p class="auth-return">ログイン後に、開こうとしたページへ戻ります。</p>' : ""}${googleLoginButton()}<div id="auth-error" class="error" role="alert">${esc(authState.error)}</div>${!authState.configured ? '<p class="auth-note">Googleログインは接続設定の準備中です。</p>' : ""}<p class="auth-note">Googleのパスワードを、このアプリに入力する必要はありません。記録は現在、このブラウザ内に保存されます。</p><details class="demo-options" ${authMode === "register" ? "open" : ""}><summary>デモを試す</summary><span class="demo-label">DEMO / パスワード不要</span>${authMode === "login" ? `<div class="demo-users">${demoStore.data.users.map((u) => `<button class="demo-user" data-action="login" data-id="${u.id}">${avatar(u)}<span><strong>${esc(u.name)}</strong><small>このブラウザだけのデモユーザー</small></span>${icon("arrow-right")}</button>`).join("")}</div>${action("auth-register", "デモ用の棚をつくる " + icon("arrow-right"), "", "text-btn")}` : `<form id="register-form" class="register-form" novalidate><label>デモの表示名 <span class="muted">必須</span><input name="name" required maxlength="30" autocomplete="nickname" placeholder="あなたの名前"></label><div id="register-error" class="error" role="alert"></div><button class="btn primary" type="submit">デモを始める ${icon("arrow-right")}</button>${action("auth-login", "デモユーザーを選ぶ", "", "text-btn")}</form>`}</details></section></main>`;
   $(".auth-form > p.auth-note:last-of-type").textContent = "Googleログイン後の記録はクラウドに保存されます。ゲストの記録はこのブラウザ内に保存されます。";
   if (!needsCloudLogin()) $(".auth-form .google-login").insertAdjacentHTML("afterend", action("guest-login", "ゲストで始める", "", "btn guest-login"));
   else $(".demo-options").hidden = true;
@@ -210,7 +250,7 @@ function monthCount() {
 }
 function shell(content) {
   app.innerHTML = `
-    <div class="shell">
+    <div class="shell ${route() === "/shelf" ? "own-shelf" : ""}">
       <header class="topbar">
         <div class="header-inner">
           <a href="#/shelf" class="brand">${icon("book-open")}<span>ReadTrace</span></a>
@@ -244,7 +284,8 @@ function card(r) {
       <h3 class="card-title">${esc(r.work.title)}</h3>
       <p class="creator">${esc(r.work.creator || "著者・監督未設定")}</p>
       <div class="card-meta">${statusBadge(r)}${r.review ? `<span class="review-marker" title="${r.spoiler ? 'ネタバレを含む感想あり' : '感想あり'}">${icon(r.spoiler ? 'eye-off' : 'message-square-text')}</span>` : ''}</div>
-      ${stars(r.rating)}
+      ${recordRating(r, { showUnrated: r.status === "done" })}
+      ${impression(r, { reveal: false })}
     </a>
     ${r.userId === viewer ? action('edit', icon('ellipsis'), `data-id="${r.id}" aria-label="${esc(r.work.title)}の記録を編集" title="記録を編集"`, 'card-edit icon-btn') : ''}
   </article>`;
@@ -275,7 +316,7 @@ function filteredRecords() {
   let records = shelfRecords().filter(
     (r) =>
       (view.filter === "all" || r.status === view.filter) &&
-      (!view.ratingFilter || view.ratingFilter === "all" || (view.ratingFilter === "unrated" ? r.rating === null : (r.rating ?? 0) >= Number(view.ratingFilter))) &&
+      (!view.ratingFilter || view.ratingFilter === "all" || (view.ratingFilter === "unrated" ? ratingSummary(r).average === null && ratingSummary(r).legacy === null : view.ratingFilter === "legacy" ? ratingSummary(r).legacy !== null : (ratingSummary(r).average ?? 0) >= Number(view.ratingFilter))) &&
       (!view.addedAfter || new Date(r.createdAt) >= new Date(`${view.addedAfter}T00:00:00`)) &&
       `${r.work.title} ${r.work.creator}`
         .toLocaleLowerCase()
@@ -283,106 +324,78 @@ function filteredRecords() {
   );
   return records.sort((a, b) =>
     view.sort === "rating"
-      ? (b.rating ?? -1) - (a.rating ?? -1)
+      ? (ratingSummary(b).average ?? -1) - (ratingSummary(a).average ?? -1)
+      : view.sort === "legacy-rating" ? (ratingSummary(b).legacy ?? -1) - (ratingSummary(a).legacy ?? -1)
       : view.sort === "completed"
         ? (b.completedAt || "").localeCompare(a.completedAt || "")
         : view.sort === "oldest" ? a.createdAt.localeCompare(b.createdAt) : b.createdAt.localeCompare(a.createdAt),
   );
 }
+function selectionKey() {
+  const c = shelfContext();
+  return JSON.stringify([viewer, c.owner, c.type, c.shared, view.filter]);
+}
 function renderShelfGrid() {
   orbitController?.dispose();
   orbitController = null;
-  const records = filteredRecords(),
-    c = shelfContext(),
-    own = c.owner === viewer && !c.shared;
-  $("#shelf-grid").innerHTML = records.length
-    ? records.map(card).join("")
-    : empty(
-        view.query ? "作品が見つかりません" : c.type === "book" ? "本棚はまだ空です" : "映画の記録はまだありません",
-        view.query
-          ? "検索語や絞り込みを変えてみてください。"
-          : own
-            ? "読みたい一冊、観たい一本から、棚を育ててみませんか。"
-            : "公開された作品が追加されると、ここに並びます。",
-        own
-          ? action("add", icon("plus") + "作品を追加", "", "btn primary") + (c.type === "book" ? '<a href="#/discover" class="btn">本を見つける</a>' : "")
-          : "",
+  const records = filteredRecords(), c = shelfContext();
+  const grid = $("#shelf-grid"), own = route() === "/shelf";
+  const isBook = c.type === "book";
+  const first = own && !shelfRecords().length;
+  const filtersActive = view.filter !== "all" || view.query || view.addedAfter || (view.ratingFilter && view.ratingFilter !== "all");
+  $("#shelf-options")?.setAttribute("aria-label", filtersActive ? "棚の絞り込み・並べ替え（適用中）" : "棚の絞り込み・並べ替え");
+  document.querySelectorAll('[data-action="shelf-view"]').forEach(button => button.setAttribute('aria-pressed', button.dataset.view === shelfView));
+  $(".shelf-orbit")?.remove();
+  grid.hidden = false;
+  grid.innerHTML = "";
+  if (!records.length) {
+    grid.innerHTML = first
+      ? empty(isBook ? "記念すべき一冊目" : "記念すべき一本目", "", action("add", icon("plus") + (isBook ? "一冊目を追加する" : "一本目を追加する"), 'data-first="true"', "btn primary"))
+      : empty(
+        own && view.filter === "want" && !shelfRecords().some(record => record.status === "want") ? `${labels[c.type].want}リストは空です` : filtersActive ? "条件に合う作品がありません" : "公開された作品がありません",
+        "",
+        filtersActive ? action("reset-shelf-filters", "絞り込みを解除") : "",
       );
+  } else if (shelfView === "grid" || !own) {
+    grid.innerHTML = records.map(card).join("");
+  } else {
+    const key = selectionKey();
+    grid.hidden = true;
+    grid.insertAdjacentHTML('beforebegin', `<section class="shelf-orbit" aria-label="回転する棚">
+      <div class="orbit-stage" id="orbit-stage">
+        <div class="orbit-surface" id="orbit-surface"></div>
+        ${records.length > 1 ? action('orbit-prev', icon('chevron-left'), 'aria-label="前の作品" title="前の作品"', 'icon-btn orbit-prev') + action('orbit-next', icon('chevron-right'), 'aria-label="次の作品" title="次の作品"', 'icon-btn orbit-next') : ''}
+      </div>
+      <div class="orbit-caption" id="orbit-caption" aria-live="polite"></div>
+    </section>`);
+    const initialIndex = Math.max(0, records.findIndex(r => r.id === shelfSelection.get(key)));
+    orbitController = createCoverOrbit($('#orbit-surface'), {
+      records, initialIndex, intro: !orbitIntroduced, imageFor: imageForWork, coverFor: cover,
+      onOpen: record => navigate(`/record/${record.id}`),
+      onSelect(record, index) {
+        shelfSelection.set(key, record.id);
+        $('#orbit-caption').innerHTML = `<span class="orbit-counter">${index + 1} / ${records.length}</span>
+          <h2><a href="#/record/${record.id}">${esc(record.work.title)}</a></h2>
+          ${impression(record, { showMissing: true })}
+          <div class="orbit-meta">${statusBadge(record)}${recordRating(record, { showUnrated: record.status === "done" })}${completionDate(record)}${record.visibility === 'private' ? '<span class="badge">'+icon('lock-keyhole')+'非公開</span>' : ''}</div>
+          <div class="orbit-actions"><a class="btn" href="#/record/${record.id}">記録を見る ${icon('arrow-right')}</a>${action('edit', icon('pencil') + '記録を編集', `data-id="${record.id}"`)}</div>`;
+        icons();
+      },
+    });
+    orbitIntroduced = true;
+    orbitController.pause(modal.open);
+  }
   $("#result-count").textContent = `${records.length}作品`;
-  const opening = $("#shelf-opening");
-  if (opening) opening.hidden = view.filter !== "all" || Boolean(view.query) || Boolean(view.addedAfter) || Boolean(view.ratingFilter && view.ratingFilter !== "all");
-  renderMobileShelf(records);
+  hydrateRecommendations();
   icons();
 }
-function renderMobileShelf(records) {
-  const grid = $('#shelf-grid');
-  grid.hidden = false;
-  document.documentElement.dataset.shelfView = 'grid';
-  $('.shelf-orbit')?.remove();
-  if (!$('.shelf-view-switch')) {
-    $('.media-toolbar').insertAdjacentHTML('beforeend', `<div class="shelf-view-switch" role="group" aria-label="棚の表示方法">
-      ${action('shelf-view', icon('box'), 'data-view="orbit" title="回転する棚" aria-label="回転する棚"', 'icon-btn')}
-      ${action('shelf-view', icon('layout-grid'), 'data-view="grid" title="一覧表示" aria-label="一覧表示"', 'icon-btn')}
-    </div>`);
-  }
-  const updateButtons = () => document.querySelectorAll('[data-action="shelf-view"]').forEach(button => button.setAttribute('aria-pressed', button.dataset.view === shelfView));
-  updateButtons();
-  if (!mobileShelf.matches || shelfView !== 'orbit' || !records.length) return;
-  grid.insertAdjacentHTML('beforebegin', `<section class="shelf-orbit" aria-label="回転する棚">
-    <div class="orbit-stage" id="orbit-stage"></div>
-    <div class="orbit-controls">
-      ${action('orbit-prev', icon('chevron-left'), 'aria-label="前の作品" title="前の作品"', 'icon-btn')}
-      <span class="orbit-counter" id="orbit-counter" aria-live="polite"></span>
-      ${action('orbit-spin', icon('rotate-3d'), 'aria-label="表紙を一周回す" title="表紙を一周回す"', 'icon-btn')}
-      ${action('orbit-next', icon('chevron-right'), 'aria-label="次の作品" title="次の作品"', 'icon-btn')}
-    </div>
-    <div class="orbit-caption" id="orbit-caption" aria-live="polite"></div>
-  </section>`);
-  document.documentElement.dataset.shelfView = 'orbit';
-  grid.hidden = true;
-  orbitController = createCoverOrbit($('#orbit-stage'), {
-    records,
-    imageFor: imageForWork,
-    onOpen: record => navigate(`/record/${record.id}`),
-    onSelect(record, index) {
-      $('#orbit-counter').textContent = `${String(index + 1).padStart(2,'0')} / ${String(records.length).padStart(2,'0')}`;
-      $('#orbit-caption').innerHTML = `<h2><a href="#/record/${record.id}" aria-label="${esc(record.work.title)}の記録を開く">${esc(record.work.title)}</a></h2>
-        <p class="creator">${esc(record.work.creator || '著者・監督未設定')}</p>
-        <div class="orbit-meta">${statusBadge(record)}${stars(record.rating)}${record.visibility === 'private' ? '<span class="badge">'+icon('lock-keyhole')+'非公開</span>' : ''}</div>
-        <a class="text-btn" href="#/record/${record.id}">記録を見る ${icon('arrow-right')}</a>`;
-      icons();
-    },
-    onUnavailable() {
-      shelfView = 'grid';
-      grid.hidden = false;
-      $('.shelf-orbit').hidden = true;
-      document.documentElement.dataset.shelfView = 'grid';
-      updateButtons();
-      toast('立体表示を利用できないため、一覧を表示しました');
-    }
-  });
-}
-mobileShelf.addEventListener('change', () => { if ($('#shelf-grid')) renderShelfGrid(); });
-function shelfOpening(type, all) {
-  const current = all.filter(r => r.work.type === type && ['reading', 'watching'].includes(r.status));
-  if (!current.length) return '';
-  const goal = store.data.goals[viewer] || 5;
-  const count = monthCount();
-  const month = new Date().getMonth() + 1;
-  return `<section class="shelf-opening" id="shelf-opening" aria-label="進行中の作品と読書目標">
-    <div class="current-section">
-      <div class="section-heading"><h2>${type === 'book' ? 'いま、読んでいる' : 'いま、観ている'}</h2><span>${current.length}${type === 'book' ? '冊' : '本'}</span></div>
-      <div class="current-rail">${current.map(r => `<article class="current-work">
-        <a href="#/record/${r.id}" class="current-cover" aria-label="${esc(r.work.title)}の進行中の記録">${cover(r.work)}</a>
-        <div class="current-copy"><span class="current-label">${icon(type === 'book' ? 'bookmark' : 'play')} ${labels[type][r.status]}</span><h3><a href="#/record/${r.id}">${esc(r.work.title)}</a></h3><p>${esc(r.work.creator)}</p>${action('edit', icon('pencil-line') + '記録をつける', `data-id="${r.id}"`, 'text-btn')}</div>
-      </article>`).join('')}</div>
-    </div>
-    <button class="month-note" data-action="goal" aria-label="今月の読書目標を開く">
-      <span class="note-heading">${month}月の読書目標 ${icon('arrow-up-right')}</span>
-      <span class="note-body"><span class="mini-ring" style="--progress:${Math.min(100,count/goal*100)}%">${icon('book-open')}</span><span class="note-number"><strong>${count}<small> / ${goal}</small></strong><span>冊 読了</span></span></span>
-      <span class="note-caption">${count >= goal ? '今月の目標を達成しました' : `目標まで、あと${goal-count}冊。`}</span>
-    </button>
-  </section>`;
+function openShelfOptions() {
+  showModal("棚を絞り込む", `<div class="form-grid shelf-options">
+    <label class="wide">棚の作品を検索<input type="search" id="shelf-search" value="${esc(view.query)}" placeholder="タイトル・著者・監督"></label>
+    <label>並べ替え<select id="shelf-sort">${Object.entries({added:"追加順", completed:"完了日順", rating:"5軸評価順", "legacy-rating":"旧評価順", oldest:"登録が古い順"}).map(([key,label]) => `<option value="${key}" ${view.sort === key ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+    <label>評価<select id="rating-filter"><option value="all">すべて</option><option value="unrated" ${view.ratingFilter === "unrated" ? "selected" : ""}>未評価</option><option value="legacy" ${view.ratingFilter === "legacy" ? "selected" : ""}>旧評価あり</option>${[1, 2, 3, 4, 4.5, 5].map(n => `<option value="${n}" ${String(view.ratingFilter) === String(n) ? "selected" : ""}>5軸：${n}以上</option>`).join("")}</select></label>
+    <label>登録日以降<input id="added-after" type="date" value="${esc(view.addedAfter || "")}"></label></div>
+    <div class="dialog-actions">${action("reset-shelf-filters", "解除")}${action("close", "棚を見る", "", "btn primary")}</div>`);
 }
 function shelfScreen() {
   const c = shelfContext(),
@@ -406,18 +419,22 @@ function shelfScreen() {
     movie: all.filter((r) => r.work.type === "movie").length,
   };
   const share = action('share-shelf', icon('share-2'), 'aria-label="棚を共有" title="棚を共有"', 'icon-btn shelf-share');
-  const heading = own ? `
-    <div class="page-title shelf-title"><div><p class="kicker">MY LIBRARY</p><h1>自分の棚<span class="title-dot" aria-hidden="true">.</span></h1><p>${esc(owner.name)}さんの、本と映画の記録。</p></div>
-    <div class="shelf-heading-actions"><div class="tally"><span>${icon('book-open')}<strong>${all.filter(r=>r.work.type==='book'&&r.status==='done').length}</strong>冊 読了</span><span>${icon('clapperboard')}<strong>${all.filter(r=>r.work.type==='movie'&&r.status==='done').length}</strong>本 鑑賞</span></div>${share}</div></div>` : `
+  const heading = own ? '<h1 class="sr-only">自分の棚</h1>' : `
     <section class="profile-head"><span class="avatar large" style="--avatar:${owner.color}">${esc(owner.initial)}</span><div class="profile-copy"><h1>${esc(owner.name)}</h1><p>${esc(owner.bio || "この人の本と映画の記録。")}</p><div class="profile-count"><span><strong>${all.length}</strong>公開作品</span><span><strong>${store.data.follows.filter(([a])=>a===owner.id).length}</strong>フォロー</span><span><strong>${store.data.follows.filter(([,b])=>b===owner.id).length}</strong>フォロワー</span></div></div><div class="profile-actions">${owner.id!==viewer?followButton(owner.id):''}${share}</div></section>`;
-  const tabs = `<div class="media-toolbar"><div class="tabs" role="tablist" aria-label="棚の種別">${['book','movie'].map(type=>`<button class="tab" role="tab" id="tab-${type}" aria-selected="${c.type===type}" aria-controls="shelf-panel" data-action="shelf-type" data-type="${type}">${icon(type==='book'?'book-open':'clapperboard')}${type==='book'?'本の棚':'映画の棚'}<small>${counts[type]}</small></button>`).join('')}</div><span class="collection-caption">BOOKS & FILMS, WITH YOU.</span></div>`;
+  const tabs = `<div class="media-toolbar"><div class="tabs" role="tablist" aria-label="棚の種別">${['book','movie'].map(type=>`<button class="tab" role="tab" id="tab-${type}" aria-selected="${c.type===type}" aria-controls="shelf-panel" data-action="shelf-type" data-type="${type}">${icon(type==='book'?'book-open':'clapperboard')}${type==='book'?'本の棚':'映画の棚'}<small>${counts[type]}</small></button>`).join('')}</div>${own ? `<div class="shelf-view-switch" role="group" aria-label="棚の表示方法">
+    ${action('shelf-view', icon('box'), 'data-view="orbit" aria-label="回転する棚" title="回転する棚"', 'icon-btn')}
+    ${action('shelf-view', icon('layout-grid'), 'data-view="grid" aria-label="一覧表示" title="一覧表示"', 'icon-btn')}
+  </div>` : ""}</div>`;
+  const want = own && view.filter === "want";
   const filters = ['all',...Object.keys(labels[c.type])].filter(s=>!c.shared||s==='all'||s===c.shared).map(s=>`<button class="filter" aria-pressed="${view.filter===s}" data-action="filter" data-filter="${s}">${s==='all'?'すべて':labels[c.type][s]}<small>${shelfRecords().filter(r=>s==='all'||r.status===s).length}</small></button>`).join('');
   return `${c.shared?`<div class="shared-label">${icon('link')} ${esc(owner.name)}さんの${c.type==='book'?'本':'映画'}の棚 · ${labels[c.type][c.shared]}リスト</div>`:''}${heading}${tabs}
     <section id="shelf-panel" role="tabpanel" aria-labelledby="tab-${c.type}">
-      ${own?shelfOpening(c.type,all):''}
-      <div class="collection-heading"><h2>${c.type==='book'?'本の記録':'映画の記録'}</h2><span class="collection-number">${String(shelfRecords().length).padStart(2,'0')}</span></div>
-      <div class="shelf-tools"><div class="filters" aria-label="状態で絞り込み">${filters}</div><div class="search-sort"><label class="search-box">${icon('search')}<input id="shelf-search" type="search" aria-label="棚の作品を検索" placeholder="この棚を検索" value="${esc(view.query)}"></label><label class="sort-box">${icon('arrow-down-wide-narrow')}<select id="shelf-sort" aria-label="作品の並べ替え"><option value="added" ${view.sort==='added'?'selected':''}>追加順</option><option value="completed" ${view.sort==='completed'?'selected':''}>完了日順</option><option value="rating" ${view.sort==='rating'?'selected':''}>評価順</option></select></label></div></div>
+      <div class="shelf-tools compact-shelf-tools"><div class="filters" aria-label="状態で絞り込み">${filters}</div>
+        <div class="shelf-utility">${action("shelf-options", icon("list-filter"), 'id="shelf-options" aria-label="棚の絞り込み・並べ替え" title="絞り込み・並べ替え"', "icon-btn")}${own ? share : ""}</div>
+      </div>
+      ${want ? `<h2 class="want-heading">保存した「${labels[c.type].want}」</h2>` : ""}
       <div class="shelf-grid" id="shelf-grid"></div>
+      ${want ? `<section class="recommendations" aria-labelledby="recommend-title"><div class="section-heading"><h2 id="recommend-title">おすすめ候補</h2></div><div id="recommend-list" aria-busy="true"></div></section>` : ""}
       <footer class="shelf-footer"><span id="result-count"></span><span>ReadTrace <span class="footer-dot">·</span> 本と映画、その余韻を。</span></footer>
     </section>`;
 }
@@ -430,13 +447,11 @@ function followButton(id) {
     following(id) ? "btn subtle" : "btn primary",
   );
 }
-function review(r, preview = false) {
-  if (!r.review)
-    return `<p class="muted review-text">感想はまだありません。</p>`;
-  // Spoiler text is never inserted into list previews or hidden detail markup.
-  if (r.spoiler && (preview || (!revealed.has(r.id) && r.userId !== viewer)))
-    return `<div class="spoiler-box"><span>${icon("eye-off")} ネタバレを含む感想です</span>${preview ? `<a class="btn" href="#/record/${r.id}">記録を開く ${icon("arrow-right")}</a>` : action("reveal", "ネタバレを表示", `data-id="${r.id}"`)}</div>`;
-  return `${r.spoiler ? '<span class="badge">ネタバレあり</span>' : ""}<p class="review-text">${esc(r.review)}</p>`;
+function review(r) {
+  if (!r.review) return "";
+  if (r.spoiler && !revealed.has(r.id))
+    return `<div class="spoiler-box"><span>${icon("eye-off")} ネタバレを含む感想です</span>${action("reveal", "詳しい感想を表示", `data-id="${r.id}"`)}</div>`;
+  return `<details class="record-fold" ${revealed.has(r.id) ? "open" : ""}><summary>詳しい感想${r.spoiler ? "（ネタバレあり）" : ""}</summary><p class="review-text">${esc(r.review)}</p></details>`;
 }
 function socialButtons(r) {
   if (!socialRecord(r)) return "";
@@ -455,7 +470,7 @@ function feedScreen() {
       ? records
           .map((r) => {
             const u = user(r.userId);
-            return `<article class="feed-item"><div class="feed-user"><a href="#/user/${u.id}" class="row">${avatar(u)}<strong>${esc(u.name)}</strong></a><span class="badge">${labels[r.work.type][r.status]}</span><time>${date(r.completedAt || r.createdAt)}</time></div><div class="feed-body"><a href="#/record/${r.id}" tabindex="-1" aria-hidden="true">${cover(r.work)}</a><div><h2><a href="#/record/${r.id}">${esc(r.work.title)}</a></h2><p class="creator">${esc(r.work.creator)}</p>${stars(r.rating)}${review(r, true)}${socialButtons(r)}</div></div></article>`;
+            return `<article class="feed-item"><div class="feed-user"><a href="#/user/${u.id}" class="row">${avatar(u)}<strong>${esc(u.name)}</strong></a><span class="badge">${labels[r.work.type][r.status]}</span><time>${date(r.createdAt)}</time></div><div class="feed-body"><a href="#/record/${r.id}" tabindex="-1" aria-hidden="true">${cover(r.work)}</a><div><h2><a href="#/record/${r.id}">${esc(r.work.title)}</a></h2><p class="creator">${esc(r.work.creator)}</p>${recordRating(r)}${impression(r, { reveal: false })}${socialButtons(r)}</div></div></article>`;
           })
           .join("")
       : empty(
@@ -479,7 +494,7 @@ function detailScreen(id) {
     );
   const u = user(r.userId),
     own = r.userId === viewer;
-  return `<a class="text-btn" href="#${own ? "/shelf" : `/user/${u.id}`}">${icon("arrow-left")} ${own ? "自分の棚へ" : esc(u.name) + "さんの棚へ"}</a><div class="detail-layout"><div class="detail-art">${cover(r.work)}</div><article class="detail-head"><div>${statusBadge(r)} ${r.visibility === "private" ? '<span class="badge">' + icon("lock-keyhole") + "非公開</span>" : ""}</div><h1>${esc(r.work.title)}</h1><p class="creator">${esc(r.work.creator || "著者・監督未設定")}${r.work.year ? " / " + esc(r.work.year) : ""}</p>${stars(r.rating)}<div class="detail-owner"><a class="row" href="#/user/${u.id}">${avatar(u)}${esc(u.name)}</a><span class="muted">${r.completedAt ? date(r.completedAt) + (r.work.type === "book" ? " 読了" : " 鑑賞") : labels[r.work.type][r.status]}</span></div>${review(r)}${socialButtons(r)}<div class="detail-commands">${own ? action("edit", icon("pencil") + "記録を編集", `data-id="${r.id}"`, "btn primary") : action("save-work", icon("plus") + "自分の棚に追加", `data-id="${r.id}"`, "btn")}${r.visibility === "public" ? action("share-record", icon("link") + "共有URL", `data-id="${r.id}"`) : own ? '<span class="muted field-hint">非公開の記録は共有できません。</span>' : ""}</div>${socialRecord(r) ? comments(r) : ""}</article></div>`;
+  return `<a class="text-btn" href="#${own ? "/shelf" : `/user/${u.id}`}">${icon("arrow-left")} ${own ? "自分の棚へ" : esc(u.name) + "さんの棚へ"}</a><div class="detail-layout"><div class="detail-art">${cover(r.work)}</div><article class="detail-head"><div>${statusBadge(r)} ${r.visibility === "private" ? '<span class="badge">' + icon("lock-keyhole") + "非公開</span>" : ""}</div><h1>${esc(r.work.title)}</h1><p class="creator">${esc(r.work.creator || "著者・監督未設定")}${r.work.year ? " / " + esc(r.work.year) : ""}</p>${impression(r, { showMissing: true })}<div class="detail-rating">${recordRating(r)} ${completionDate(r)}</div><div class="detail-owner"><a class="row" href="#/user/${u.id}">${avatar(u)}${esc(u.name)}</a></div>${axisDetail(r)}${review(r)}${socialButtons(r)}<div class="detail-commands">${own ? action("edit", icon("pencil") + "記録を編集", `data-id="${r.id}"`, "btn primary") : action("save-work", icon("plus") + "自分の棚に追加", `data-id="${r.id}"`, "btn")}${r.visibility === "public" ? action("share-record", icon("link") + "共有URL", `data-id="${r.id}"`) : own ? '<span class="muted field-hint">非公開の記録は共有できません。</span>' : ""}</div>${socialRecord(r) ? comments(r) : ""}</article></div>`;
 }
 function comments(r) {
   const list = store.data.comments.filter((c) => c.recordId === r.id);
@@ -501,7 +516,6 @@ function render() {
   discoveryObserver?.disconnect();
   orbitController?.dispose();
   orbitController = null;
-  document.documentElement.dataset.shelfView = 'grid';
   const mediaRoute = route().split('/');
   const activeRecord = mediaRoute[1] === 'record' ? store.get(mediaRoute[2], viewer) : null;
   document.documentElement.dataset.media = activeRecord?.work.type || (mediaRoute[1] === 'share' ? mediaRoute[3] : view.type);
@@ -537,12 +551,7 @@ function render() {
       if (record.work.publisher || record.work.isbn13) $(".detail-head .creator").insertAdjacentHTML("afterend", `<p class="field-hint">${esc([record.work.publisher, record.work.publishedAt, record.work.isbn13 ? `ISBN ${record.work.isbn13}` : ""].filter(Boolean).join(" / "))}</p>`);
     }
   }
-  if ($("#shelf-grid")) {
-    $(".shelf-tools").insertAdjacentHTML("afterend", `<div class="shelf-extra-filters"><label>評価<select id="rating-filter"><option value="all">すべて</option><option value="unrated">未評価</option>${[1, 2, 3, 4, 4.5, 5].map((n) => `<option value="${n}" ${String(view.ratingFilter) === String(n) ? "selected" : ""}>${n}以上</option>`).join("")}</select></label><label>登録日以降<input id="added-after" type="date" value="${esc(view.addedAfter || "")}"></label>${action("reset-shelf-filters", icon("filter-x"), 'aria-label="絞り込みを解除" title="絞り込みを解除"', "icon-btn")}</div>`);
-    $("#rating-filter").value = view.ratingFilter || "all";
-    $("#shelf-sort").insertAdjacentHTML("beforeend", `<option value="oldest" ${view.sort === "oldest" ? "selected" : ""}>登録が古い順</option>`);
-    renderShelfGrid();
-  }
+  if ($("#shelf-grid")) renderShelfGrid();
   if (p[1] === "discover") hydrateDiscovery();
   icons();
 }
@@ -550,6 +559,7 @@ window.addEventListener("hashchange", async () => {
   view.filter = "all";
   view.query = "";
   revealed.clear();
+  revealedImpressions.clear();
   closeModal();
   const path = route(), current = store;
   if (current.mode === "cloud") {
@@ -617,10 +627,56 @@ async function renderCatalog(append = false) {
     icons();
   }
 }
-function openWorkDetail(work) {
+function openWorkDetail(work, recommend = false) {
   if (!work) return;
-  showModal(work.type === "book" ? "本の詳細" : "映画の詳細", `<div class="work-preview work-bibliography">${cover(work)}<div><h3>${esc(work.title)}</h3><p>${esc(work.creator || "著者・監督未設定")}</p><p class="muted">${esc([work.publisher, work.publishedAt || work.year].filter(Boolean).join(" / "))}</p>${work.isbn13 ? `<p class="field-hint">ISBN ${esc(work.isbn13)}</p>` : ""}</div></div><p class="book-description">${esc(work.description || "概要は提供されていません。")}</p>${work.sourceUrl ? `<a class="text-btn" href="${esc(work.sourceUrl)}" target="_blank" rel="noopener noreferrer">${esc(work.source)} ${icon("external-link")}</a>` : ""}<div class="dialog-actions">${action("select-work", icon("plus") + "自分の棚に追加", `data-id="${esc(work.id)}"`, "btn primary")}</div>`);
+  showModal(work.type === "book" ? "本の詳細" : "映画の詳細", `<div class="work-preview work-bibliography">${cover(work)}<div><h3>${esc(work.title)}</h3><p>${esc(work.creator || "著者・監督未設定")}</p><p class="muted">${esc([work.publisher, work.publishedAt || work.year].filter(Boolean).join(" / "))}</p>${work.isbn13 ? `<p class="field-hint">ISBN ${esc(work.isbn13)}</p>` : ""}</div></div><p class="book-description">${esc(work.description || "概要は提供されていません。")}</p>${work.sourceUrl ? `<a class="text-btn" href="${esc(work.sourceUrl)}" target="_blank" rel="noopener noreferrer">${esc(work.source)} ${icon("external-link")}</a>` : ""}<div class="dialog-actions">${recommend ? recommendButton(work) : action("select-work", icon("plus") + "自分の棚に追加", `data-id="${esc(work.id)}"`, "btn primary")}</div>`);
   modal.dataset.media = work.type;
+}
+function recommendationVisit(type) {
+  const key = JSON.stringify([viewer, type]);
+  if (!recommendationVisits.has(key)) recommendationVisits.set(key, { limit: 3, added: [] });
+  return recommendationVisits.get(key);
+}
+function recommendButton(work, saved = store.visible(viewer, viewer).some(r => sameWork(r.work, work))) {
+  const pending = pendingRecommendations.has(JSON.stringify([viewer, work.id]));
+  return action("recommend-add", saved ? icon("check") + "追加済み" : icon("plus") + labels[work.type].want,
+    `data-id="${esc(work.id)}" ${saved || pending ? "disabled" : ""}`, saved ? "btn" : "btn primary");
+}
+function hydrateRecommendations() {
+  const target = $("#recommend-list");
+  if (!target) return;
+  const type = view.type;
+  const records = store.visible(viewer, viewer);
+  const visit = recommendationVisit(type);
+  const query = recommendationQuery(type, records.filter(r => !visit.added.some(work => sameWork(work, r.work))), catalog);
+  const key = JSON.stringify([type, query]);
+  target.dataset.queryKey = key;
+  let entry = recommendationCache.get(key);
+  if (!entry) {
+    entry = { state: "loading", items: [] };
+    recommendationCache.set(key, entry);
+    void books.search({ type, query, page: 1 }).then(result => {
+      entry.state = result.warnings?.length && !result.items.length ? "error" : "ready";
+      entry.items = result.items.slice(0, 20);
+    }).catch(() => { entry.state = "error"; }).finally(() => {
+      if ($("#recommend-list")?.dataset.queryKey === key) hydrateRecommendations();
+    });
+  }
+  if (entry.state === "loading") {
+    target.setAttribute("aria-busy", "true");
+    target.innerHTML = '<p class="field-hint" role="status">候補を探しています…</p>';
+    return;
+  }
+  const ranked = rankRecommendations({ type, records, catalog, fetched: entry.items, added: visit.added });
+  target.setAttribute("aria-busy", "false");
+  const shown = ranked.slice(0, visit.limit);
+  shown.forEach(({work}) => works.set(work.id, work));
+  target.innerHTML = `${entry.state === "error" ? `<div class="recommend-error"><p class="field-hint" role="status">新しい候補を取得できませんでした。</p>${action("recommend-retry", icon("refresh-cw") + "再試行", "", "text-btn")}</div>` : ""}
+    ${shown.length ? `<div class="recommend-grid">${shown.map(({work, reason, saved}) => `<article class="recommend-card">
+      <button type="button" class="recommend-work" data-action="recommend-detail" data-id="${esc(work.id)}">${cover(work)}<strong>${esc(work.title)}</strong><small>${esc(work.creator)}</small></button>
+      <p class="recommend-reason">${esc(reason)}</p>${recommendButton(work, saved)}</article>`).join("")}</div>` : '<p class="field-hint">まだ候補がありません。</p>'}
+    ${ranked.length > visit.limit ? action("recommend-more", "候補をもっと見る " + icon("chevron-down"), "", "text-btn") : ""}`;
+  icons();
 }
 function discoverScreen() {
   return `<div class="page-title"><div><p class="kicker">DISCOVER</p><h1>次に読みたい、一冊。</h1></div>${action("search-books", icon("search") + "本を検索", "", "btn primary")}</div>${discoverySections.map((section) => `<section class="discovery-section" data-discovery="${section.id}"><div class="section-heading"><h2>${section.title}</h2>${action("discover-more", "もっと見る " + icon("arrow-right"), `data-section="${section.id}"`, "text-btn")}</div><div class="discovery-rail" id="discovery-${section.id}">${Array.from({ length: 6 }, () => '<div class="discovery-skeleton" aria-hidden="true"></div>').join("")}</div></section>`).join("")}`;
@@ -652,44 +708,90 @@ function hydrateDiscovery() {
   document.querySelectorAll("[data-discovery]").forEach((node) => discoveryObserver.observe(node));
 }
 function openEditor(work, record = null, manual = false) {
-  editing = { work: { ...work }, record, manual };
-  const r = record || {
-    status: "want",
-    rating: null,
-    review: "",
-    spoiler: false,
-    visibility: "public",
-    completedAt: "",
-  };
+  editing = { work: { ...work }, record, manual, dateInitialized: record?.status === "done" || Boolean(record?.completedAt) };
+  const r = record || { status: "done", visibility: "public" };
+  const values = readAxes(r.axisRatings);
+  const unknown = r.status === "done" && !r.completedAt && Boolean(record);
+  const completed = r.completedAt || (!record ? localDate() : "");
+  if (!record) editing.dateInitialized = true;
   showModal(
     record ? "記録を編集" : manual ? "作品を手入力" : "自分の棚に追加",
-    `<form id="record-form" novalidate>${manual ? `<div class="form-grid"><label>種別 <span class="muted">必須</span><select name="type" id="edit-type"><option value="book" ${work.type === "book" ? "selected" : ""}>本</option><option value="movie" ${work.type === "movie" ? "selected" : ""}>映画</option></select></label><label>タイトル <span class="muted">必須</span><input name="title" value="${esc(work.title)}" required maxlength="200"></label><label>${work.type === "book" ? "著者" : "監督"} <span class="muted">任意</span><input name="creator" value="${esc(work.creator)}" maxlength="120"></label><label>画像URL <span class="muted">任意</span><input type="url" name="image" value="${esc(work.image)}" placeholder="https://..."></label></div>` : `<div class="work-preview">${cover(work)}<div><span class="badge">${work.type === "book" ? "本" : "映画"}</span><h3>${esc(work.title)}</h3><p class="muted">${esc(work.creator)}</p></div></div>`}<div class="form-grid" style="margin-top:20px"><label class="wide">状態<select name="status" id="edit-status">${Object.entries(
-      labels[work.type],
-    )
-      .map(
-        ([key, label]) =>
-          `<option value="${key}" ${r.status === key ? "selected" : ""}>${label}</option>`,
-      )
-      .join(
-        "",
-      )}</select></label><fieldset class="wide"><legend>評価 <span id="rating-required" class="muted">${r.status === "done" ? "必須" : "任意"}</span></legend><div class="rating-control">${ratingPicker(r.rating, icon)}<label class="check-label"><input type="checkbox" id="no-rating" ${r.rating === null ? "checked" : ""}>未評価</label></div></fieldset><label class="wide">感想 <span class="muted">任意</span><textarea name="review" maxlength="10000" placeholder="心に残ったことを、ひとことでも。">${esc(r.review)}</textarea></label><label class="wide check-label"><input name="spoiler" type="checkbox" ${r.spoiler ? "checked" : ""}>ネタバレあり</label><label>読了日・鑑賞日 <span class="muted">任意</span><input name="completedAt" type="date" value="${esc(r.completedAt)}"></label><label>公開範囲<select name="visibility"><option value="public" ${r.visibility === "public" ? "selected" : ""}>公開（ログインユーザー）</option><option value="private" ${r.visibility === "private" ? "selected" : ""}>非公開（自分だけ）</option></select></label></div><div class="error" id="record-error" role="alert"></div><div class="dialog-actions">${record ? action("delete-record", icon("trash-2"), `data-id="${record.id}" aria-label="記録を削除" title="記録を削除"`, "btn danger") : ""}${action("close", "キャンセル")}<button class="btn primary" type="submit">${icon("check")}${record ? "変更を保存" : "棚に追加"}</button></div></form>`,
+    `<form id="record-form" novalidate>
+      ${manual ? `<div class="form-grid manual-work"><label>種別<select name="type" id="edit-type"><option value="book" ${work.type === "book" ? "selected" : ""}>本</option><option value="movie" ${work.type === "movie" ? "selected" : ""}>映画</option></select></label><label>タイトル<input name="title" value="${esc(work.title)}" required maxlength="200"></label><label>${work.type === "book" ? "著者" : "監督"} <span class="muted">任意</span><input name="creator" value="${esc(work.creator)}" maxlength="120"></label><label id="manual-isbn-label" ${work.type !== "book" ? "hidden" : ""}>ISBN <span class="muted">任意</span><input name="isbn" value="${esc(work.isbn13 || work.isbn || "")}" maxlength="24"></label><label class="wide">画像URL <span class="muted">任意</span><input type="url" name="image" value="${esc(work.image)}" placeholder="https://..."></label></div>` : `<div class="work-preview editor-preview">${cover(work)}<div><h3>${esc(work.title)}</h3><p class="muted">${esc(work.creator)}</p></div></div>`}
+      <div class="record-fields">
+        <label>状態<select name="status" id="edit-status">${Object.entries(labels[work.type]).map(([key,label]) => `<option value="${key}" ${r.status === key ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+        <div class="completion-fields" id="completion-fields" ${r.status !== "done" ? "hidden" : ""}>
+          <label for="impression">この作品を一言でいうと？</label>
+          <input id="impression" name="impression" type="text" value="${esc(r.impression)}" aria-describedby="impression-counter impression-error" autocomplete="off">
+          <div class="impression-hint"><span>20文字以内</span><output id="impression-counter" for="impression"></output></div>
+          <p class="error" id="impression-error" aria-live="polite" hidden></p>
+          <div class="completion-inputs"><label><span id="completed-label"></span><input name="completedAt" type="date" value="${esc(completed)}" ${unknown ? "disabled" : ""}></label><label class="check-label"><input name="dateUnknown" type="checkbox" ${unknown ? "checked" : ""}>日付不明</label></div>
+        </div>
+        <details class="record-fold" id="axis-editor">
+          <summary>5軸評価をつける <span id="editor-rating-summary" class="field-hint"></span></summary>
+          ${AXES.map(({key,label,book,movie}) => `<div class="axis-editor-row" data-axis="${key}"><h3>${label}</h3><p class="field-hint" data-axis-hint data-book="${book}" data-movie="${movie}">${work.type === "book" ? book : movie}</p><div class="rating-control">${ratingPicker(values[key] ?? null, icon, { name: "axis-" + key, label })}${action("clear-axis", icon("x"), `aria-label="${label}を未評価に戻す" title="未評価に戻す" ${values[key] ? "" : "disabled"}`, "icon-btn axis-clear")}</div></div>`).join("")}
+          ${r.rating != null ? `<p class="field-hint legacy-rating">旧評価 ${Number(r.rating).toFixed(1)}点</p>` : ""}
+        </details>
+        <details class="record-fold"><summary>詳しい感想を書く <span class="field-hint">任意</span></summary><label>詳しい感想<textarea name="review" maxlength="10000">${esc(r.review)}</textarea></label></details>
+        <label class="check-label"><input name="spoiler" type="checkbox" ${r.spoiler ? "checked" : ""}>一言・詳しい感想にネタバレあり</label>
+        <details class="record-fold"><summary>公開範囲・開始日</summary><div class="form-grid record-options"><label>公開範囲<select name="visibility"><option value="public" ${r.visibility === "public" ? "selected" : ""}>公開（ログインユーザー）</option><option value="private" ${r.visibility === "private" ? "selected" : ""}>非公開（自分だけ）</option></select></label><label><span id="started-label"></span><input name="startedAt" type="date" value="${esc(r.startedAt)}"></label></div></details>
+      </div>
+      <div class="error" id="record-error" role="alert"></div>
+      <div class="dialog-actions">${record ? action("delete-record", icon("trash-2"), `data-id="${record.id}" aria-label="記録を削除" title="記録を削除"`, "btn danger") : ""}${action("close", "キャンセル")}<button class="btn primary" type="submit">${icon("check")}${record ? "変更を保存" : "棚に保存"}</button></div>
+    </form>`,
   );
   modal.dataset.media = work.type;
-  $('input[name="completedAt"]').closest("label").insertAdjacentHTML("beforebegin", `<label>読書・鑑賞開始日 <span class="muted">任意</span><input name="startedAt" type="date" value="${esc(r.startedAt || "")}"></label>`);
-  if (manual) $('input[name="image"]').closest("label").insertAdjacentHTML("beforebegin", `<label id="manual-isbn-label" ${work.type !== "book" ? "hidden" : ""}>ISBN <span class="muted">任意</span><input name="isbn" inputmode="text" value="${esc(work.isbn13 || work.isbn || "")}" maxlength="24"></label>`);
+  syncEditorStatus();
+  updateAxisSummary();
 }
-function ratingUpdate() {
-  const picker = $("#rating-picker");
-  const selected = picker.querySelector('input[name="rating"]:checked');
-  const n = $("#no-rating").checked ? null : Number(selected?.value || picker.dataset.lastRating || 3);
-  syncRatingPicker(picker, n);
-  $("#rating-value").textContent = n === null ? "未評価" : `${n.toFixed(1)}点`;
+function needsImpression() {
+  return $("#edit-status").value === "done" && !(editing.record?.status === "done" && editing.record.impression == null);
+}
+function updateImpression(checkRequired = false) {
+  const field = $("#impression");
+  const count = impressionLength(field.value.trim());
+  $("#impression-counter").textContent = `${count} / ${IMPRESSION_LIMIT}`;
+  const error = impressionError(field.value, checkRequired && needsImpression());
+  const note = $("#impression-error");
+  note.textContent = error;
+  note.hidden = !error;
+  field.setAttribute("aria-invalid", String(Boolean(error)));
+  return error;
+}
+function syncEditorStatus() {
+  const done = $("#edit-status").value === "done";
+  $("#completion-fields").hidden = !done;
+  $("#impression").required = needsImpression();
+  const type = editing.work.type;
+  $("#completed-label").textContent = type === "book" ? "読了日" : "鑑賞日";
+  $("#started-label").textContent = type === "book" ? "読書開始日" : "鑑賞開始日";
+  document.querySelectorAll("[data-axis-hint]").forEach(node => { node.textContent = node.dataset[type]; });
+  if (done && !editing.dateInitialized) {
+    $('input[name="completedAt"]').value = localDate();
+    editing.dateInitialized = true;
+  }
+  updateImpression();
+}
+function axisValues(data) {
+  return readAxes(Object.fromEntries(AXES.map(({key}) => [key, Number(data.get("axis-" + key))])));
+}
+function updateAxisSummary() {
+  const { average, count } = ratingSummary({ axisRatings: axisValues(new FormData($("#record-form"))) });
+  $("#editor-rating-summary").textContent = count ? `${average.toFixed(1)}点${count < 5 ? "・暫定" : ""} / ${count}項目` : "任意・未評価";
+}
+function updateAxis(row, value) {
+  syncRatingPicker(row.querySelector(".rating-picker"), value);
+  row.querySelector(".rating-value").textContent = value === null ? "未評価" : `${value.toFixed(1)}点`;
+  const clear = row.querySelector(".axis-clear");
+  if (value === null && document.activeElement === clear) row.querySelector('input[type="radio"]').focus();
+  clear.disabled = value === null;
+  updateAxisSummary();
 }
 function selectWork(work) {
   if (!work) return;
   const existing = store
     .visible(viewer, viewer)
-    .find((r) => workIdentity(r.work) === workIdentity(work));
+    .find((r) => sameWork(r.work, work));
   if (existing) {
     closeModal();
     navigate(`/record/${existing.id}`);
@@ -750,7 +852,7 @@ function openShare(recordId, selection = {}) {
     const url = shareUrl(`/record/${r.id}`);
     showModal(
       "この記録を共有",
-      `<div class="share-preview"><span class="muted">${esc(user(r.userId).name)}の記録</span><h3>${esc(r.work.title)}</h3>${stars(r.rating)}${r.spoiler ? '<p class="muted">ネタバレを含む感想は、共有先で操作するまで表示されません。</p>' : r.review ? `<p>${esc(r.review)}</p>` : ""}</div><label>共有URL<input id="share-url" class="share-url" readonly value="${esc(url)}"></label><div class="dialog-actions">${action("copy-url", icon("copy") + "URLをコピー", `data-url="${esc(url)}"`, "btn primary")}</div><p class="share-meta">閲覧にはログインが必要です。このブラウザ内のデモデータを共有します。別端末へ変更は同期されません。</p>`,
+      `<div class="share-preview"><span class="muted">${esc(user(r.userId).name)}の記録</span><h3>${esc(r.work.title)}</h3>${recordRating(r)}${impression(r, { reveal: false })}</div><label>共有URL<input id="share-url" class="share-url" readonly value="${esc(url)}"></label><div class="dialog-actions">${action("copy-url", icon("copy") + "URLをコピー", `data-url="${esc(url)}"`, "btn primary")}</div><p class="share-meta">閲覧にはログインが必要です。このブラウザ内のデモデータを共有します。別端末へ変更は同期されません。</p>`,
     );
   } else
     showModal(
@@ -845,6 +947,35 @@ document.addEventListener("click", async (event) => {
     else if (a === "add") openSearch();
     else if (a === "search-books") { view.type = "book"; openSearch(); }
     else if (a === "work-detail") openWorkDetail(works.get(id));
+    else if (a === "recommend-detail") openWorkDetail(works.get(id), true);
+    else if (a === "recommend-more") {
+      recommendationVisit(view.type).limit += 3;
+      hydrateRecommendations();
+      $("#recommend-list [data-action='recommend-more']")?.focus();
+    }
+    else if (a === "recommend-retry") {
+      recommendationCache.delete($("#recommend-list")?.dataset.queryKey);
+      hydrateRecommendations();
+    }
+    else if (a === "recommend-add") {
+      const work = works.get(id), key = JSON.stringify([requester, id]);
+      if (!work || pendingRecommendations.has(key)) return;
+      if (currentStore.visible(requester, requester).some(r => sameWork(r.work, work))) return toast("この作品はすでに棚にあります");
+      pendingRecommendations.add(key);
+      b.disabled = true;
+      try {
+        const saved = await currentStore.save({ work, status: "want", rating: null, visibility: "public", spoiler: false }, requester);
+        if (!sameAccount()) return;
+        recommendationVisit(work.type).added.push(work);
+        shelfSelection.set(JSON.stringify([viewer, viewer, work.type, "", "want"]), saved.id);
+        if (modal.open && b.isConnected) closeModal();
+        render();
+        toast(`${labels[work.type].want}に追加しました`);
+      } finally {
+        pendingRecommendations.delete(key);
+        if (b.isConnected) b.disabled = false;
+      }
+    }
     else if (a === "discover-more") {
       const section = discoverySections.find((s) => s.id === b.dataset.section);
       view.type = "book"; searchType = "book"; searchField = "all"; searchOrder = section.order || "relevance"; searchQuery = section.query; openSearch(false);
@@ -852,15 +983,15 @@ document.addEventListener("click", async (event) => {
     else if (a === "discover-retry") { discoveryCache.delete(b.dataset.section); render(); }
     else if (a === "search-more") { searchPage++; void renderCatalog(true); }
     else if (a === "search-retry") void renderCatalog();
-    else if (a === "reset-shelf-filters") { view.ratingFilter = "all"; view.addedAfter = ""; view.query = ""; view.filter = "all"; render(); }
+    else if (a === "shelf-options") openShelfOptions();
+    else if (a === "reset-shelf-filters") { closeModal(); view.ratingFilter = "all"; view.addedAfter = ""; view.query = ""; view.filter = "all"; render(); }
     else if (a === 'shelf-view') {
       shelfView = b.dataset.view;
-      localStorage.setItem('readtrace:shelf-view:v1', shelfView);
+      localStorage.setItem(SHELF_VIEW_KEY, shelfView);
       renderShelfGrid();
     }
     else if (a === 'orbit-prev') orbitController?.step(-1);
     else if (a === 'orbit-next') orbitController?.step(1);
-    else if (a === 'orbit-spin') orbitController?.rotate();
     else if (a === "shelf-type") {
       const c = shelfContext();
       view.type = b.dataset.type;
@@ -889,6 +1020,12 @@ document.addEventListener("click", async (event) => {
         true,
       );
     else if (a === "select-work") selectWork(works.get(id));
+    else if (a === "clear-axis") updateAxis(b.closest("[data-axis]"), null);
+    else if (a === "reveal-impression" && store.get(id, viewer)) {
+      revealedImpressions.add(id);
+      if ($("#shelf-grid")) renderShelfGrid();
+      else render();
+    }
     else if (a === "edit") {
       const r = store.get(id, viewer);
       if (r?.userId === viewer)
@@ -951,6 +1088,7 @@ document.addEventListener("click", async (event) => {
 });
 document.addEventListener("input", (event) => {
   const target = event.target;
+  if (target.id === "impression" && !event.isComposing) updateImpression();
   if (target.id === "shelf-search") {
     view.query = target.value;
     renderShelfGrid();
@@ -971,6 +1109,9 @@ document.addEventListener("input", (event) => {
     $("#people-empty").hidden = shown !== 0;
   }
 });
+document.addEventListener("compositionend", (event) => {
+  if (event.target.id === "impression") updateImpression();
+});
 document.addEventListener("change", (event) => {
   if (event.target.id === "rating-filter") { view.ratingFilter = event.target.value; renderShelfGrid(); }
   if (event.target.id === "added-after") { view.addedAfter = event.target.value; renderShelfGrid(); }
@@ -979,11 +1120,9 @@ document.addEventListener("change", (event) => {
     view.sort = event.target.value;
     renderShelfGrid();
   }
-  if (event.target.id === "no-rating") ratingUpdate();
-  if (event.target.matches('#rating-picker input[name="rating"]')) { $("#no-rating").checked = false; ratingUpdate(); }
-  if (event.target.id === "edit-status")
-    $("#rating-required").textContent =
-      event.target.value === "done" ? "必須" : "任意";
+  if (event.target.matches('[data-axis] input[type="radio"]')) updateAxis(event.target.closest("[data-axis]"), Number(event.target.value));
+  if (event.target.name === "dateUnknown") $('input[name="completedAt"]').disabled = event.target.checked;
+  if (event.target.id === "edit-status") syncEditorStatus();
   if (event.target.id === "edit-type") {
     editing.work.type = event.target.value;
     modal.dataset.media = event.target.value;
@@ -993,7 +1132,7 @@ document.addEventListener("change", (event) => {
     $("#edit-status").innerHTML = Object.entries(labels[event.target.value])
       .map(([key, label]) => `<option value="${key}">${label}</option>`)
       .join("");
-    $("#rating-required").textContent = "任意";
+    syncEditorStatus();
   }
 });
 document.addEventListener("submit", async (event) => {
@@ -1020,6 +1159,11 @@ document.addEventListener("submit", async (event) => {
       toast("あなたの棚をつくりました");
     }
     if (form.id === "record-form") {
+      $("#record-error").textContent = "";
+      if (data.get("status") === "done" && updateImpression(true)) { $("#impression").focus(); return; }
+      if (data.get("status") === "done" && !data.has("dateUnknown") && !data.get("completedAt")) {
+        throw new Error("日付を入力するか、日付不明を選んでください。");
+      }
       let work = { ...editing.work };
       if (editing.manual) {
         const image = String(data.get("image") || "").trim();
@@ -1042,13 +1186,13 @@ document.addEventListener("submit", async (event) => {
           ...editing.record,
           work,
           status: data.get("status"),
-          rating: $("#no-rating").checked
-            ? null
-            : Number(data.get("rating")),
+          rating: editing.record?.rating ?? null,
+          axisRatings: axisValues(data),
+          impression: data.get("status") === "done" ? String(data.get("impression") || "").trim() || null : editing.record?.impression ?? null,
           review: String(data.get("review") || ""),
           spoiler: data.has("spoiler"),
           visibility: data.get("visibility"),
-          completedAt: String(data.get("completedAt") || ""),
+          completedAt: data.get("status") === "done" ? String(data.get("completedAt") || "") : editing.record?.completedAt || "",
           startedAt: String(data.get("startedAt") || ""),
         },
         viewer,
@@ -1057,10 +1201,12 @@ document.addEventListener("submit", async (event) => {
       view.type = r.work.type;
       view.filter = "all";
       view.query = "";
-      if (!editing.record) { view.ratingFilter = "all"; view.addedAfter = ""; }
+      view.ratingFilter = "all";
+      view.addedAfter = "";
+      shelfSelection.set(JSON.stringify([viewer, viewer, r.work.type, "", "all"]), r.id);
       closeModal();
-      if (editing.record) render();
-      else navigate("/shelf");
+      navigate("/shelf");
+      window.scrollTo(0, 0);
       toast("記録を保存しました");
     }
     if (form.id === "comment-form") {
@@ -1133,10 +1279,6 @@ function localSources() {
       const records = old?.records?.filter((r) => r.userId === authState.user.id) || [];
       if (records.length) sources.push({ key: "account", label: "以前このGoogleアカウントで端末に保存した記録", records });
     } catch {}
-  }
-  for (const u of demoStore.data.users) {
-    const records = demoStore.data.records.filter((r) => r.userId === u.id);
-    if (records.length) sources.push({ key: `demo:${u.id}`, label: `デモ棚: ${u.name}`, records });
   }
   return sources;
 }
@@ -1216,6 +1358,7 @@ const auth = createAuth({
     if (next.user && changed) {
       localStorage.removeItem(SESSION_KEY);
       revealed.clear();
+    revealedImpressions.clear();
       void startCloud(next.user);
     } else if (!next.user && changed) {
       accountVersion++;
@@ -1224,6 +1367,7 @@ const auth = createAuth({
       viewer = "";
       cloudLoading = false; cloudFailure = "";
       revealed.clear();
+      revealedImpressions.clear();
       closeModal();
     } else if (!next.user && next.ready && !viewer) {
       const savedDemo = localStorage.getItem(SESSION_KEY);
