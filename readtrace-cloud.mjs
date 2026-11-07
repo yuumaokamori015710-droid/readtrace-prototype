@@ -1,5 +1,6 @@
-import { validateRecord, visibleTo, socialRecord } from "./readtrace-store.mjs";
+import { validateRecord, visibleTo, socialRecord } from "./readtrace-store.mjs?v=shelf-notes-1";
 import { canonicalIsbn, safeImage, workIdentity } from "./readtrace-books.mjs";
+import { readAxes } from "./readtrace-record.mjs";
 
 export function profileFor(identity) {
   const name = String(identity.user_metadata?.full_name || identity.user_metadata?.name || "読書家").trim().slice(0, 60) || "読書家";
@@ -10,12 +11,12 @@ export function recordFromRow(row) {
   for (const key of ["id", "title", "creator", "isbn", "isbn13", "publisher", "publishedAt", "description", "genre", "language", "source"]) work[key] = typeof source[key] === "string" ? source[key] : "";
   work.image = safeImage(source.image); work.sourceUrl = safeImage(source.sourceUrl);
   work.year = Number.isInteger(source.year) && source.year > 0 && source.year < 10000 ? source.year : null;
-  return { id: row.id, userId: row.user_id, work, status: row.status, rating: row.rating === null ? null : Number(row.rating), review: row.review || "", spoiler: row.spoiler, visibility: row.visibility, startedAt: row.started_at || "", completedAt: row.completed_at || "", history: row.history || [], createdAt: row.created_at, updatedAt: row.updated_at };
+  return { id: row.id, userId: row.user_id, work, status: row.status, rating: row.rating == null ? null : Number(row.rating), impression: typeof row.impression === "string" ? row.impression : null, axisRatings: readAxes(row.axis_ratings), review: row.review || "", spoiler: row.spoiler, visibility: row.visibility, startedAt: row.started_at || "", completedAt: row.completed_at || "", history: row.history || [], createdAt: row.created_at, updatedAt: row.updated_at };
 }
 export function recordToRow(record, userId) {
   const work = { ...record.work };
   if (work.type === "book") { const isbn = canonicalIsbn(work.isbn13 || work.isbn); work.isbn13 = isbn; work.isbn = isbn; }
-  return { user_id: userId, work, status: record.status, rating: record.rating, review: record.review || "", spoiler: Boolean(record.spoiler), visibility: record.visibility, started_at: record.startedAt || null, completed_at: record.completedAt || null };
+  return { user_id: userId, work, status: record.status, rating: record.rating ?? null, impression: record.impression?.trim() || null, axis_ratings: readAxes(record.axisRatings), review: record.review || "", spoiler: Boolean(record.spoiler), visibility: record.visibility, started_at: record.startedAt || null, completed_at: record.completedAt || null };
 }
 export function cloudError(error) {
   if (error?.code === "23505") return new Error("この作品はすでに棚にあります。");
@@ -109,10 +110,10 @@ export function createCloudStore(client, identity, { onChange = () => {}, onSync
       data.likes = [...data.likes.filter(([, id]) => !ids.has(id)), ...social.likes];
       data.comments = [...data.comments.filter((c) => !ids.has(c.recordId)), ...social.comments];
     },
-    async save(record, viewer) {
+    async save(record, viewer, { preserveLegacy = false } = {}) {
       assertOwner(viewer);
-      const error = validateRecord(record); if (error) throw new Error(error);
       const existing = data.records.find((r) => r.id === record.id);
+      const error = validateRecord(record, { previous: existing, preserveLegacy }); if (error) throw new Error(error);
       if (record.id && !existing) throw new Error("この記録は別の端末で削除されたか、読み込めなくなりました。棚を更新してください。");
       if (existing && existing.userId !== viewer) throw new Error("この記録は編集できません。");
       if (!existing && data.records.some((r) => r.userId === viewer && workIdentity(r.work) === workIdentity(record.work))) throw new Error("この作品はすでに棚にあります。");
@@ -163,7 +164,7 @@ export function createCloudStore(client, identity, { onChange = () => {}, onSync
       const errors = [];
       for (const record of records) {
         if (data.records.some((r) => r.userId === ownId && workIdentity(r.work) === workIdentity(record.work))) { skipped++; continue; }
-        try { await store.save({ ...record, id: undefined }, ownId); imported++; }
+        try { await store.save({ ...record, id: undefined }, ownId, { preserveLegacy: true }); imported++; }
         catch (error) { errors.push(`${record.work?.title || "作品"}: ${error.message}`); }
       }
       return { imported, skipped, errors };

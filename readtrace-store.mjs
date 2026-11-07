@@ -1,5 +1,6 @@
-import { seedData } from "./readtrace-data.mjs";
+import { seedData } from "./readtrace-data.mjs?v=shelf-notes-1";
 import { workIdentity } from "./readtrace-books.mjs";
+import { AXES, impressionError, isHalfStar, readAxes } from "./readtrace-record.mjs";
 export const STORAGE_KEY = "readtrace:books-films:v2";
 export const SESSION_KEY = "readtrace:demo-session:v2";
 export const labels = {
@@ -12,22 +13,22 @@ export const visibleTo = (record, userId) =>
   );
 export const socialRecord = (record) =>
   record?.visibility === "public" && record.status === "done";
-export function validateRecord(record) {
+export function validateRecord(record, { previous, preserveLegacy = false } = {}) {
   if (!["book", "movie"].includes(record.work?.type))
     return "作品の種別を選んでください。";
   if (!record.work?.title?.trim()) return "タイトルを入力してください。";
   if (!Object.keys(labels[record.work.type]).includes(record.status))
     return "状態を選んでください。";
-  if (
-    record.rating !== null &&
-    (!Number.isFinite(record.rating) ||
-      record.rating < 0.5 ||
-      record.rating > 5 ||
-      (record.rating * 2) % 1 !== 0)
-  )
+  if (record.rating != null && !isHalfStar(record.rating))
     return "評価は0.5〜5の範囲で選んでください。";
-  if (record.status === "done" && record.rating === null)
-    return "読了・鑑賞済みの記録には評価を選んでください。";
+  if (record.axisRatings != null && (
+    typeof record.axisRatings !== "object" || Array.isArray(record.axisRatings) ||
+    Object.entries(record.axisRatings).some(([key, value]) => !AXES.some(axis => axis.key === key) || !isHalfStar(value))
+  )) return "各項目の評価は0.5〜5点から選んでください。";
+  const legacy = (previous?.status === "done" && previous.impression == null)
+    || (preserveLegacy && record.impression == null && isHalfStar(record.rating));
+  const error = impressionError(record.impression, record.status === "done" && !legacy);
+  if (error) return error;
   for (const value of [record.startedAt, record.completedAt]) {
     if (value && (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value)) return "日付を確認してください。";
   }
@@ -70,7 +71,7 @@ export function createStore(storage, { key = STORAGE_KEY, seed = seedData } = {}
       const existing = data.records.find((r) => r.id === record.id);
       if (existing && existing.userId !== viewer)
         throw new Error("この記録は編集できません。");
-      const error = validateRecord(record);
+      const error = validateRecord(record, { previous: existing });
       if (error) throw new Error(error);
       if (
         record.work.id &&
@@ -79,18 +80,31 @@ export function createStore(storage, { key = STORAGE_KEY, seed = seedData } = {}
         )
       )
         throw new Error("この作品はすでに棚にあります。");
+      const now = new Date().toISOString();
+      const axisRatings = readAxes(record.axisRatings);
+      const { startedAt = "", completedAt = "" } = record;
       const item = {
         ...record,
         id: existing?.id || crypto.randomUUID(),
         userId: viewer,
         work: { ...record.work, title: record.work.title.trim() },
-        createdAt: existing?.createdAt || new Date().toISOString(),
-        history: [...(existing?.history || []), ...(!existing || existing.status !== record.status ? [{ status: record.status, rating: record.rating, at: new Date().toISOString() }] : [])],
+        impression: record.impression?.trim() || null,
+        axisRatings,
+        startedAt,
+        completedAt,
+        review: record.review || "",
+        createdAt: existing?.createdAt || now,
+        updatedAt: now,
+        history: [...(existing?.history || []), ...(!existing || existing.status !== record.status ||
+          (existing.completedAt || "") !== completedAt || (existing.startedAt || "") !== startedAt ||
+          JSON.stringify(readAxes(existing.axisRatings)) !== JSON.stringify(axisRatings)
+          ? [{ status: record.status, rating: record.rating ?? null, axisRatings, startedAt, completedAt, at: now }] : [])],
       };
+      const before = data.records;
       data.records = existing
         ? data.records.map((r) => (r.id === item.id ? item : r))
         : [item, ...data.records];
-      persist();
+      try { persist(); } catch (error) { data.records = before; throw error; }
       return item;
     },
     remove(id, viewer) {

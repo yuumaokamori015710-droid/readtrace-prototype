@@ -137,6 +137,14 @@ const movieRows = [
   ["BLUE GIANT", "立川譲", "2023", ""],
   ["ルックバック", "押山清高", "2024", ""],
 ];
+const movieGenres = [
+  "日常ドラマ", "恋愛", "SF", "コメディ", "日常ドラマ",
+  "アニメ / ファンタジー", "アニメ / 恋愛", "サスペンス", "音楽 / 恋愛", "恋愛 / コメディ",
+  "ドラマ", "日常ドラマ", "日常ドラマ", "ドラマ / ミステリー", "ドラマ",
+  "アニメ / ファンタジー", "アニメ / ファンタジー", "アニメ / ファンタジー", "SF / コメディ", "コメディ",
+  "歴史 / ドラマ", "音楽 / ドラマ", "犯罪 / ドラマ", "恋愛", "アニメ / ファンタジー",
+  "日常ドラマ", "SF", "歴史 / ドラマ", "アニメ / 音楽", "アニメ / ドラマ",
+];
 export const catalog = [
   ...bookRows.map(([title, creator, genre, isbn], i) => ({
     id: `b${i + 1}`,
@@ -154,7 +162,7 @@ export const catalog = [
     title,
     creator,
     year,
-    genre: "映画",
+    genre: movieGenres[i],
     image: poster ? `https://image.tmdb.org/t/p/w342/${poster}` : "",
   })),
 ];
