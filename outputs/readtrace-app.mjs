@@ -700,16 +700,16 @@ function selectWork(work) {
 }
 function openAccount() {
   if (authState.user) {
-    showModal("アカウント", `<div class="row account-identity">${avatar(mine())}<div><strong>${esc(mine().name)}</strong><p class="muted">Googleアカウント / クラウド保存</p></div></div><div class="stack"><a class="btn" data-close href="#/user/${viewer}">${icon("user-round")}プロフィールを見る</a>${action("goal", icon("chart-no-axes-combined") + "読書目標と実績")}${action("import-local", icon("import") + "端末の記録を取り込む")}${action("cloud-refresh", icon("refresh-cw") + "再同期")}${action("logout", icon("log-out") + "ログアウト")}<p class="field-hint">${syncState === "error" ? "接続を確認して再同期してください。" : "本と映画の記録をSupabaseに保存しています。非公開記録は本人だけが取得できます。"}</p></div>`);
+    showModal("アカウント", `<div class="row account-identity">${avatar(mine())}<div><strong>${esc(mine().name)}</strong><p class="muted">Googleアカウント / クラウド保存</p></div></div><div class="stack">${action("business-contact", icon("mail") + "製作者へのお問い合わせ")}<a class="btn" data-close href="#/user/${viewer}">${icon("user-round")}プロフィールを見る</a>${action("goal", icon("chart-no-axes-combined") + "読書目標と実績")}${action("import-local", icon("import") + "端末の記録を取り込む")}${action("cloud-refresh", icon("refresh-cw") + "再同期")}${action("logout", icon("log-out") + "ログアウト")}<p class="field-hint">${syncState === "error" ? "接続を確認して再同期してください。" : "本と映画の記録をSupabaseに保存しています。非公開記録は本人だけが取得できます。"}</p></div>`);
     return;
   }
   if (viewer === "guest") {
-    showModal("アカウント", `<div class="row account-identity">${avatar(mine())}<div><strong>ゲスト</strong><p class="muted">この端末内に保存</p></div></div><div class="stack">${action("goal", icon("chart-no-axes-combined") + "読書目標と実績")}${googleLoginButton()}${action("logout", icon("log-out") + "終了する")}<p class="field-hint">Googleログイン後に、端末の記録を選んでクラウドへ取り込めます。この端末の記録は削除しません。</p></div>`);
+    showModal("アカウント", `<div class="row account-identity">${avatar(mine())}<div><strong>ゲスト</strong><p class="muted">この端末内に保存</p></div></div><div class="stack">${action("business-contact", icon("mail") + "製作者へのお問い合わせ")}${action("goal", icon("chart-no-axes-combined") + "読書目標と実績")}${googleLoginButton()}${action("logout", icon("log-out") + "終了する")}<p class="field-hint">Googleログイン後に、端末の記録を選んでクラウドへ取り込めます。この端末の記録は削除しません。</p></div>`);
     return;
   }
   showModal(
     "アカウント",
-    `<div class="row" style="margin-bottom:18px">${avatar(mine())}<div><strong>${esc(mine().name)}</strong><p class="muted">デモアカウント</p></div></div><div class="stack"><a class="btn" data-close href="#/user/${viewer}">${icon("user-round")}プロフィールを見る</a>${action("goal", icon("chart-no-axes-combined") + "読書目標と実績")}<hr style="border:0;border-top:1px solid var(--line);width:100%;margin:0"><h3>デモユーザーを切り替える</h3><div class="stack" style="gap:7px">${store.data.users
+    `<div class="row" style="margin-bottom:18px">${avatar(mine())}<div><strong>${esc(mine().name)}</strong><p class="muted">デモアカウント</p></div></div><div class="stack">${action("business-contact", icon("mail") + "製作者へのお問い合わせ")}<a class="btn" data-close href="#/user/${viewer}">${icon("user-round")}プロフィールを見る</a>${action("goal", icon("chart-no-axes-combined") + "読書目標と実績")}<hr style="border:0;border-top:1px solid var(--line);width:100%;margin:0"><h3>デモユーザーを切り替える</h3><div class="stack" style="gap:7px">${store.data.users
       .filter((u) => u.id !== viewer)
       .map(
         (u) =>
@@ -842,6 +842,7 @@ document.addEventListener("click", async (event) => {
       authMode = "login";
       render();
     } else if (a === "account") openAccount();
+    else if (a === "business-contact") { closeModal(); const contact=document.getElementById("readtrace-business-contact"); const details=contact?.querySelector("details"); if(details){details.open=true;contact.scrollIntoView({block:"center",behavior:"smooth"});details.querySelector("summary")?.focus();} }
     else if (a === "goal") openGoal();
     else if (a === "add") openSearch();
     else if (a === "search-books") { view.type = "book"; openSearch(); }
