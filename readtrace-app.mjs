@@ -298,7 +298,7 @@ function renderShelfGrid() {
   $("#shelf-grid").innerHTML = records.length
     ? records.map(card).join("")
     : empty(
-        view.query ? "作品が見つかりません" : "まだ、ここには何も。",
+        view.query ? "作品が見つかりません" : c.type === "book" ? "本棚はまだ空です" : "映画の記録はまだありません",
         view.query
           ? "検索語や絞り込みを変えてみてください。"
           : own
