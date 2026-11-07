@@ -29,7 +29,7 @@ test("NDL handles both structured XML scalar and browser array values", () => {
   const item = normalizeNdl({ title: ["こころ"], creator: ["夏目漱石"], identifier: [{ "#text": "9784101010137" }], publisher: "新潮社" });
   assert.equal(item.title, "こころ"); assert.equal(item.creator, "夏目漱石"); assert.equal(item.isbn13, "9784101010137");
 });
-test("API failure falls back to Open Library, never sample data", async () => {
+test("Open Library results skip Google, including on later pages", async () => {
   const urls = [];
   const provider = createBookProvider({ fetcher: async (url) => {
     urls.push(String(url));
@@ -37,7 +37,97 @@ test("API failure falls back to Open Library, never sample data", async () => {
   } });
   const result = await provider.search({ query: "Soseki", page: 2, field: "author" });
   assert.equal(result.items[0].title, "Kokoro"); assert.equal(result.hasMore, true);
-  assert.equal(result.warnings.length, 1); assert.match(urls[0], /inauthor/); assert.match(urls[1], /page=2/);
+  assert.equal(result.warnings.length, 0); assert.equal(urls.length, 1); assert.match(urls[0], /author=Soseki/); assert.match(urls[0], /page=2/);
+});
+
+test("NDL and Open Library are queried first, deduplicated and never enriched with Google",async()=>{
+  const urls=[];
+  const provider=createBookProvider({parseXml:JSON.parse,fetcher:async url=>{
+    urls.push(url);
+    if(url.hostname.includes('googleapis')) assert.fail('Google must not be called for primary results');
+    if(url.hostname==='ndlsearch.ndl.go.jp') return {ok:true,text:async()=>JSON.stringify({rss:{channel:{item:[{title:'こころ',creator:'夏目漱石',identifier:'9784101010137'}],totalResults:1}}})};
+    return response({numFound:1,docs:[{key:'/works/OL1W',title:'Kokoro',isbn:['9784101010137'],author_name:['夏目漱石']}]});
+  }});
+  const result=await provider.search({query:'こころ',field:'title'});
+  assert.equal(result.items.length,1); assert.match(result.items[0].source,/国立国会図書館サーチ/); assert.match(result.items[0].source,/Open Library/);
+  assert.equal(urls[0].hostname,'ndlsearch.ndl.go.jp'); assert.equal(urls[0].searchParams.get('mediatype'),'books'); assert.equal(urls.length,2);
+});
+
+test("Google is requested only after both primary providers return no usable books",async()=>{
+  const hosts=[];
+  const provider=createBookProvider({parseXml:JSON.parse,fetcher:async url=>{
+    hosts.push(url.hostname);
+    if(url.hostname==='ndlsearch.ndl.go.jp') return {ok:true,text:async()=>JSON.stringify({rss:{channel:{item:[]}}})};
+    return url.hostname==='openlibrary.org' ? response({docs:[{key:'/empty',title:'   '}],numFound:0}) : response({items:[google],totalItems:1});
+  }});
+  const result=await provider.search({query:'English rare title'});
+  assert.equal(result.items[0].id,'google:volume-1');
+  assert.deepEqual(hosts,['ndlsearch.ndl.go.jp','openlibrary.org','www.googleapis.com']);
+});
+
+test("one failed primary does not trigger Google if the other has books",async()=>{
+  const hosts=[];
+  const provider=createBookProvider({parseXml:JSON.parse,fetcher:async url=>{
+    hosts.push(url.hostname);
+    return url.hostname==='ndlsearch.ndl.go.jp' ? response({},503) : response({docs:[{key:'/works/one',title:'One'}],numFound:1});
+  }});
+  const result=await provider.search({query:'One'});
+  assert.equal(result.items.length,1); assert.equal(result.warnings.length,1); assert.ok(!hosts.includes('www.googleapis.com'));
+});
+
+test("Google can recover total primary service failure without sample data",async()=>{
+  const provider=createBookProvider({parseXml:JSON.parse,fetcher:async url=>url.hostname.includes('googleapis') ? response({items:[google]}) : response({},503)});
+  const result=await provider.search({query:'rare'});
+  assert.deepEqual(result.sources,['Google Books']); assert.equal(result.warnings.length,2); assert.equal(result.items[0].title,'こころ');
+});
+
+test("an empty later primary page cannot spend Google quota when page one matched",async()=>{
+  const hosts=[];
+  const provider=createBookProvider({fetcher:async url=>{
+    hosts.push(url.hostname);
+    assert.equal(url.hostname,'openlibrary.org');
+    return response({numFound:1,docs:url.searchParams.get('page')==='1' ? [{key:'/works/one',title:'One'}] : []});
+  },pause:async()=>{}});
+  const result=await provider.search({query:'One',page:2});
+  assert.equal(result.items.length,0); assert.equal(result.hasMore,false); assert.equal(hosts.length,2);
+});
+
+test("Google fallback pagination keeps its offset after confirming primary page one is empty",async()=>{
+  const urls=[];
+  const provider=createBookProvider({fetcher:async url=>{
+    urls.push(url);
+    return url.hostname==='openlibrary.org' ? response({docs:[],numFound:0}) : response({items:[google],totalItems:100});
+  },pause:async()=>{}});
+  const result=await provider.search({query:'rare',page:2});
+  assert.equal(result.items.length,1); assert.equal(urls.filter(u=>u.hostname.includes('googleapis')).length,1);
+  assert.equal(urls.at(-1).searchParams.get('startIndex'),'18');
+});
+
+test("known primary success survives an outage during an exhausted later page",async()=>{
+  let first=true; const hosts=[];
+  const provider=createBookProvider({pause:async()=>{},fetcher:async url=>{
+    hosts.push(url.hostname); assert.equal(url.hostname,'openlibrary.org');
+    if(first){first=false;return response({docs:[{key:'/works/one',title:'One'}],numFound:1});}
+    return url.searchParams.get('page')==='2' ? response({docs:[],numFound:0}) : response({},503);
+  }});
+  await provider.search({query:'One'}); const result=await provider.search({query:'One',page:2});
+  assert.equal(result.primaryFound,true); assert.equal(result.items.length,0); assert.equal(hosts.length,2);
+});
+
+test("client carries primary success across stateless paginated server requests",async()=>{
+  const requests=[];
+  const client=createBookClient({endpoint:'https://example.com/books',fetcher:async(_,options)=>{
+    requests.push(JSON.parse(options.body));return response({items:[],primaryFound:true,cacheTtlSeconds:0});
+  }});
+  await client.search({query:'One',page:1}); await client.search({query:'One',page:2});
+  assert.equal(requests[1].primaryFound,true);
+});
+
+test("a server pagination hint avoids both Google and the unnecessary first-page probe",async()=>{
+  const urls=[];
+  const provider=createBookProvider({fetcher:async url=>{urls.push(url);assert.equal(url.hostname,'openlibrary.org');return response({docs:[]});}});
+  const result=await provider.search({query:'One',page:2,primaryFound:true});
+  assert.equal(result.primaryFound,true); assert.equal(result.hasMore,false); assert.equal(urls.length,1);
 });
 test("zero results are distinct from total service failure", async () => {
   const empty = createBookProvider({ fetcher: async () => response({ totalItems: 0, numFound: 0, docs: [] }) });

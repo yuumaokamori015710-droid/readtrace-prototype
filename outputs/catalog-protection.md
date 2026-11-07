@@ -21,6 +21,13 @@ Book/movie searches share the app usage allowance. Existing shelf reads, edits, 
 
 ## Cache Policy
 
+Book search queries NDL Search (books only) and Open Library before Google. At least
+one usable primary result suppresses Google entirely, even without a cover or
+description. Google is a fallback for empty/unavailable primary results, not an
+enrichment provider. Known primary success survives pagination and later primary
+outages through a client routing hint; it grants no access or quota bypass. All
+cache permission rules and Google budgets below still apply when fallback is used.
+
 - Successful permitted provider responses are shared across instances and redeploys. Concurrent identical lookups share one in-process fetch; database leases prevent simultaneous duplicate acquisitions across instances. Pending instances can use other providers instead of issuing another upstream request.
 - Google caching follows its actual response headers. `private`, `no-store`, `no-cache`, absent permission, or max-age=0 means no shared persistence. Current live Google responses have a zero shared lifetime. Do not claim that repeated Google queries now avoid its quota.
 - Other providers use their declared lifetime when present, otherwise a six-hour default; all shared lifetimes are capped at 24 hours. Empty array responses are capped at five minutes. HTTP errors and HTTP-200 error documents are not cached as successes. No expired/stale data is served.

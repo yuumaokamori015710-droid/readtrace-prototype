@@ -28,7 +28,7 @@ async function readInput(request) {
   if (type === "book" && field === "isbn" && !canonicalIsbn(query)) throw new CatalogError("ISBNはチェック桁を含む10桁または13桁で入力してください。", 400, 0);
   const page = input.page === undefined ? 1 : Number(input.page);
   if (!Number.isInteger(page) || page < 1 || page > 20) throw new CatalogError("検索は1〜20ページの範囲でご利用ください。", 400, 0);
-  return { type, query, field, order, page };
+  return { type, query, field, order, page, primaryFound: input.primaryFound === true };
 }
 
 export function createCatalogHandler({ url, serviceKey, clientKey, googleKey, parseXml, fetcher = fetch, rpc = createCatalogRpc({ url, serviceKey, fetcher }) }) {

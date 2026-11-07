@@ -1,7 +1,7 @@
 # ReadTrace Prototype: Book APIs
 
 The GitHub Pages frontend calls a Supabase Edge Function for live book searches.
-Google Books is the first provider, with Open Library and NDL Search as supplements.
+NDL Search and Open Library are primary; Google Books is a missing-book fallback only.
 No Google credential is included in the static site.
 
 ```text
@@ -21,8 +21,10 @@ GitHub Pages -> readtrace-books Edge Function -> Google Books API
 ## Search Flow
 
 1. Validate the query and canonicalize valid ISBN-10/ISBN-13 values.
-2. Search Google Books first and supplement with Open Library.
-3. Add NDL Search results for Japanese queries or ISBN searches.
+2. Search NDL Search (book media only) and Open Library for Japanese/English titles, authors and ISBNs.
+3. Call Google Books only if neither primary provider returns a usable book. Missing
+   covers/descriptions do not trigger Google enrichment. Later pages preserve the
+   primary-provider routing decision; an exhausted page does not initiate a new Google search.
 4. Deduplicate by canonical ISBN/provider identity and prefer Japanese metadata.
 5. Return paginated results with source credits and explicit provider warnings.
 6. Keep manual entry available for missing books and network failures.

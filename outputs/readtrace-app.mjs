@@ -8,7 +8,8 @@ import {
 import { createCoverOrbit } from "./readtrace-orbit.mjs";
 import { authConfig } from "./readtrace-config.mjs";
 import { createAuth, emptyAccountData } from "./readtrace-auth.mjs";
-import { createBookClient, discoverySections, mergeBooks, workIdentity, canonicalIsbn, resultCacheMs } from "./readtrace-books.mjs?v=search-guard-1";
+import { createBookClient, discoverySections, mergeBooks, workIdentity, canonicalIsbn, resultCacheMs } from "./readtrace-books.mjs?v=primary-stars-1";
+import { ratingPicker, syncRatingPicker } from "./readtrace-rating.mjs?v=primary-stars-1";
 import { createCloudStore } from "./readtrace-cloud.mjs";
 
 const app = document.querySelector("#app");
@@ -671,21 +672,18 @@ function openEditor(work, record = null, manual = false) {
       )
       .join(
         "",
-      )}</select></label><fieldset class="wide"><legend>評価 <span id="rating-required" class="muted">${r.status === "done" ? "必須" : "任意"}</span></legend><div class="rating-control"><div id="rating-stars">${r.rating === null ? '<span class="muted">未評価</span>' : stars(r.rating)}</div><input type="range" id="rating-range" aria-label="星の評価" min="0.5" max="5" step="0.5" value="${r.rating || 3}" aria-valuetext="${r.rating === null ? "未評価" : r.rating + "点"}"><label class="check-label"><input type="checkbox" id="no-rating" ${r.rating === null ? "checked" : ""}>未評価</label></div></fieldset><label class="wide">感想 <span class="muted">任意</span><textarea name="review" maxlength="10000" placeholder="心に残ったことを、ひとことでも。">${esc(r.review)}</textarea></label><label class="wide check-label"><input name="spoiler" type="checkbox" ${r.spoiler ? "checked" : ""}>ネタバレあり</label><label>読了日・鑑賞日 <span class="muted">任意</span><input name="completedAt" type="date" value="${esc(r.completedAt)}"></label><label>公開範囲<select name="visibility"><option value="public" ${r.visibility === "public" ? "selected" : ""}>公開（ログインユーザー）</option><option value="private" ${r.visibility === "private" ? "selected" : ""}>非公開（自分だけ）</option></select></label></div><div class="error" id="record-error" role="alert"></div><div class="dialog-actions">${record ? action("delete-record", icon("trash-2"), `data-id="${record.id}" aria-label="記録を削除" title="記録を削除"`, "btn danger") : ""}${action("close", "キャンセル")}<button class="btn primary" type="submit">${icon("check")}${record ? "変更を保存" : "棚に追加"}</button></div></form>`,
+      )}</select></label><fieldset class="wide"><legend>評価 <span id="rating-required" class="muted">${r.status === "done" ? "必須" : "任意"}</span></legend><div class="rating-control">${ratingPicker(r.rating, icon)}<label class="check-label"><input type="checkbox" id="no-rating" ${r.rating === null ? "checked" : ""}>未評価</label></div></fieldset><label class="wide">感想 <span class="muted">任意</span><textarea name="review" maxlength="10000" placeholder="心に残ったことを、ひとことでも。">${esc(r.review)}</textarea></label><label class="wide check-label"><input name="spoiler" type="checkbox" ${r.spoiler ? "checked" : ""}>ネタバレあり</label><label>読了日・鑑賞日 <span class="muted">任意</span><input name="completedAt" type="date" value="${esc(r.completedAt)}"></label><label>公開範囲<select name="visibility"><option value="public" ${r.visibility === "public" ? "selected" : ""}>公開（ログインユーザー）</option><option value="private" ${r.visibility === "private" ? "selected" : ""}>非公開（自分だけ）</option></select></label></div><div class="error" id="record-error" role="alert"></div><div class="dialog-actions">${record ? action("delete-record", icon("trash-2"), `data-id="${record.id}" aria-label="記録を削除" title="記録を削除"`, "btn danger") : ""}${action("close", "キャンセル")}<button class="btn primary" type="submit">${icon("check")}${record ? "変更を保存" : "棚に追加"}</button></div></form>`,
   );
   modal.dataset.media = work.type;
   $('input[name="completedAt"]').closest("label").insertAdjacentHTML("beforebegin", `<label>読書・鑑賞開始日 <span class="muted">任意</span><input name="startedAt" type="date" value="${esc(r.startedAt || "")}"></label>`);
   if (manual) $('input[name="image"]').closest("label").insertAdjacentHTML("beforebegin", `<label id="manual-isbn-label" ${work.type !== "book" ? "hidden" : ""}>ISBN <span class="muted">任意</span><input name="isbn" inputmode="text" value="${esc(work.isbn13 || work.isbn || "")}" maxlength="24"></label>`);
 }
 function ratingUpdate() {
-  const n = $("#no-rating").checked ? null : Number($("#rating-range").value);
-  $("#rating-stars").innerHTML =
-    n === null ? '<span class="muted">未評価</span>' : stars(n);
-  $("#rating-range").setAttribute(
-    "aria-valuetext",
-    n === null ? "未評価" : `${n}点`,
-  );
-  icons();
+  const picker = $("#rating-picker");
+  const selected = picker.querySelector('input[name="rating"]:checked');
+  const n = $("#no-rating").checked ? null : Number(selected?.value || picker.dataset.lastRating || 3);
+  syncRatingPicker(picker, n);
+  $("#rating-value").textContent = n === null ? "未評価" : `${n.toFixed(1)}点`;
 }
 function selectWork(work) {
   if (!work) return;
@@ -964,10 +962,6 @@ document.addEventListener("input", (event) => {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => void renderCatalog(), 450);
   }
-  if (target.id === "rating-range") {
-    $("#no-rating").checked = false;
-    ratingUpdate();
-  }
   if (target.id === "people-search") {
     let shown = 0;
     document.querySelectorAll(".user-card").forEach((el) => {
@@ -986,6 +980,7 @@ document.addEventListener("change", (event) => {
     renderShelfGrid();
   }
   if (event.target.id === "no-rating") ratingUpdate();
+  if (event.target.matches('#rating-picker input[name="rating"]')) { $("#no-rating").checked = false; ratingUpdate(); }
   if (event.target.id === "edit-status")
     $("#rating-required").textContent =
       event.target.value === "done" ? "必須" : "任意";
@@ -1049,7 +1044,7 @@ document.addEventListener("submit", async (event) => {
           status: data.get("status"),
           rating: $("#no-rating").checked
             ? null
-            : Number($("#rating-range").value),
+            : Number(data.get("rating")),
           review: String(data.get("review") || ""),
           spoiler: data.has("spoiler"),
           visibility: data.get("visibility"),
