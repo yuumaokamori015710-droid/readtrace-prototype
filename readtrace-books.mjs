@@ -101,7 +101,7 @@ export function parseBrowserXml(xml) {
   }), totalResults: document.getElementsByTagNameNS("*", "totalResults")[0]?.textContent } } };
 }
 
-export function createBookProvider({ fetcher = fetch, parseXml, googleKey = "", pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+export function createBookProvider({ fetcher = fetch, parseXml, googleKey = "", cacheMs = 600000, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   const cache = new Map();
   let lastOpenLibrary = 0, googleRetryAt = 0, lastMovie = 0, movieQueue = Promise.resolve(), openLibraryQueue = Promise.resolve();
   async function request(url, format = "json", signal) {
@@ -170,7 +170,7 @@ export function createBookProvider({ fetcher = fetch, parseXml, googleKey = "", 
     if (order === "newest") items.sort((a, b) => (b.publishedAt || "").localeCompare(a.publishedAt || ""));
     const value = { items, hasMore: hasMore && items.length > 0, warnings, sources };
     if (cache.size > 100) cache.delete(cache.keys().next().value);
-    cache.set(cacheKey, { expires: Date.now() + (warnings.some((w) => /Open Library|日本語書誌/.test(w)) ? 30000 : 600000), value });
+    cache.set(cacheKey, { expires: Date.now() + Math.min(cacheMs, warnings.length ? 30000 : 600000), value });
     return structuredClone(value);
   }
   async function movies({ query, signal } = {}) {
@@ -193,7 +193,7 @@ export function createBookProvider({ fetcher = fetch, parseXml, googleKey = "", 
       }
       const result = { items, hasMore: false, warnings, sources: [source] };
       if (cache.size > 100) cache.delete(cache.keys().next().value);
-      cache.set(cacheKey, { expires: Date.now() + 600000, value: result });
+      cache.set(cacheKey, { expires: Date.now() + cacheMs, value: result });
       return result;
     });
     movieQueue = job.catch(() => {});
@@ -201,14 +201,15 @@ export function createBookProvider({ fetcher = fetch, parseXml, googleKey = "", 
   }
   async function wikiMovies(query, signal) {
     const url = new URL("https://www.wikidata.org/w/api.php");
-    url.search = new URLSearchParams({ action: "wbsearchentities", format: "json", search: query, language: /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(query) ? "ja" : "en", uselang: "ja", type: "item", limit: "20", maxlag: "5", origin: "*" }).toString();
+    // These are interactive lookups; maxlag is intended for background bots.
+    url.search = new URLSearchParams({ action: "wbsearchentities", format: "json", search: query, language: /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(query) ? "ja" : "en", uselang: "ja", type: "item", limit: "20", origin: "*" }).toString();
     const found = await request(url, "json", signal);
     if (found.error) throw new Error("映画データの取得が混み合っています。");
     const ids = (found.search || []).map((entry) => entry.id).filter((id) => /^Q\d+$/.test(id));
     if (!ids.length) return [];
     const getEntities = async (keys, props) => {
       const endpoint = new URL("https://www.wikidata.org/w/api.php");
-      endpoint.search = new URLSearchParams({ action: "wbgetentities", format: "json", ids: keys.join("|"), props, languages: "ja|en", maxlag: "5", origin: "*" }).toString();
+      endpoint.search = new URLSearchParams({ action: "wbgetentities", format: "json", ids: keys.join("|"), props, languages: "ja|en", origin: "*" }).toString();
       const data = await request(endpoint, "json", signal);
       if (data.error) throw new Error("映画データを取得できませんでした。");
       return data.entities || {};
@@ -227,27 +228,33 @@ export function createBookProvider({ fetcher = fetch, parseXml, googleKey = "", 
   return { search, movies };
 }
 
-export function createBookClient({ endpoint, publishableKey, fetcher = fetch } = {}) {
+export function resultCacheMs(value) {
+  return Number.isFinite(value.cacheTtlSeconds) ? Math.max(0, Math.min(600, value.cacheTtlSeconds)) * 1000 : 600000;
+}
+export function createBookClient({ endpoint, publishableKey, getAccessToken = async () => "", fetcher = fetch } = {}) {
   const direct = createBookProvider({ fetcher, parseXml: typeof DOMParser !== "undefined" ? parseBrowserXml : undefined });
   const cache = new Map();
-  let proxyRetryAt = 0;
   return { async search(options) {
     const { signal, ...parameters } = options;
     const key = JSON.stringify(parameters);
-    if (cache.get(key)?.expires > Date.now()) return structuredClone(cache.get(key).value);
+    if (cache.get(key)?.expires > Date.now()) {
+      const entry = cache.get(key);
+      return { ...structuredClone(entry.value), cacheTtlSeconds: Math.max(0, Math.floor((entry.expires - Date.now()) / 1000)) };
+    }
     let value;
-    if (endpoint && Date.now() >= proxyRetryAt) {
-      try {
-        const response = await fetcher(endpoint, { method: "POST", headers: { "Content-Type": "application/json", apikey: publishableKey }, body: JSON.stringify(parameters), signal });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || "書誌検索に接続できません。");
-        if (!Array.isArray(result.items)) throw new Error("Invalid search response");
-        value = result;
-      } catch (error) { if (signal?.aborted) throw error; proxyRetryAt = Date.now() + 60000; }
+    if (endpoint) {
+      const token = await getAccessToken();
+      let response;
+      try { response = await fetcher(endpoint, { method: "POST", headers: { "Content-Type": "application/json", apikey: publishableKey, ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(parameters), signal }); }
+      catch (error) { if (signal?.aborted) throw error; throw new Error("検索サービスに接続できません。接続を確認して再試行してください。"); }
+      const result = await response.json();
+      if (!response.ok) { const error = new Error(result.error || "書誌検索に接続できません。"); error.status = response.status; error.retryAfter = Number(response.headers?.get("retry-after")) || 0; throw error; }
+      if (!Array.isArray(result.items)) throw new Error("検索結果を読み込めませんでした。再試行してください。");
+      value = result;
     }
     if (!value) value = options.type === "movie" ? await direct.movies(options) : await direct.search(options);
     if (cache.size > 100) cache.delete(cache.keys().next().value);
-    cache.set(key, { expires: Date.now() + 600000, value });
+    cache.set(key, { expires: Date.now() + resultCacheMs(value), value });
     return value;
   } };
 }
