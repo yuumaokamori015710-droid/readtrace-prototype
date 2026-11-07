@@ -13,7 +13,7 @@ The implementation now uses GitHub Pages for the frontend, Supabase Auth for Goo
 - Seven discovery sections use live API data. The first section is not called a popularity ranking, because provider relevance is not a popularity metric. The newest section uses provider date ordering/date filters.
 - Movie search uses Apple iTunes movie metadata, Japan store, with caching and approximately 20/minute pacing. When the store has no result, Wikidata film entities supplement it, excluding missions/games with similar names. Apple promotional artwork/previews are not used for new records; a title cover is shown unless the user supplies an image. Existing registered movie posters remain unchanged.
 - A failed image displays a title cover; no unrelated image is substituted.
-- The metadata-only Edge Function checks the app's public project key and allowed origins, has per-instance rate limiting, and never reads user tables or uses service-role credentials. This is not an authentication boundary for private data. Private data access is enforced separately by RLS.
+- The metadata-only Edge Function checks the app's public project key and allowed origins. Its shared cache and atomic rate budgets live in a private database schema, accessible only through service-role RPCs. A server-only default secret is used exclusively for these catalog RPCs, never to query user shelves. Supabase verifies any supplied login token before assigning a user allowance; an IP preflight limit also runs before Auth lookup. This is not an authentication boundary for private shelf data, which remains enforced separately by RLS. See `catalog-protection.md` for exact limits and cache-header rules.
 
 ## Cloud Data
 
@@ -54,7 +54,7 @@ The Supabase publishable key is intentionally public browser configuration, not 
 
 ## Verification Status
 
-- Node unit tests: 52 pass (Auth, catalog normalization/fallback, cloud adapter, persistence/validation and original store behavior). Cloud adapter success cases use a substituted SDK; they are not a real Google login or cross-device test.
+- Node unit tests: 71 pass (Auth, catalog normalization/fallback, shared-cache and limit handling, cloud adapter, persistence/validation and original store behavior). Cloud adapter success cases use a substituted SDK; they are not a real Google login or cross-device test. Real Postgres catalog checks add 16 rolled-back assertions, including denial privileges, same-key leases, expiry, quota exhaustion and no global allowance consumption by individually rejected calls.
 - Real Supabase transaction: 15 RLS/constraint/history assertions passed. Test auth users, profiles, records and social rows were rolled back. Table counts were rechecked as zero.
 - Security advisors: no findings after the migration. Performance advisors only report unused new indexes because the tables are empty; those indexes support the FK/policy paths and are retained.
 - The later Auth check reports one warning for disabled leaked-password protection. The current UI uses Google OAuth rather than application passwords; password protection/Email-provider changes were not made silently. Revisit this before offering email/password sign-in. No paid service was enabled to clear the warning.

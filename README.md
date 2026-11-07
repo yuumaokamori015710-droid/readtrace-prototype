@@ -44,7 +44,9 @@ Google認証後は `readtrace_records` などのSupabaseテーブルを使用し
 npm test
 ```
 
-52件のNodeテストに加え、実Supabaseで15件のRLS/制約検証を実行し、テストデータをロールバックしています。OAuth・クラウドアダプターの単体テストはSDK差し替えで、実際のGoogle認証成功・二端末同期を確認したことにはなりません。実ブラウザの確認内容は `outputs/verification.md` を参照してください。Edge Functionの再デプロイ前は `npm run package:books-function` を実行します。
+71件のNodeテストに加え、実Supabaseで15件のRLS/制約検証と16件の検索キャッシュ・制限チェックを実行し、検証用の変更をロールバックしています。OAuth・クラウドアダプターの単体テストはSDK差し替えで、実際のGoogle認証成功・二端末同期を確認したことにはなりません。実ブラウザの確認内容は `outputs/verification.md` を参照してください。Edge Functionの再デプロイ前は `npm run package:books-function` を実行します。
+
+検索保護は既存Supabase DBの非公開スキーマを使用します。ログイン済みは200回/24時間、ゲストは60回/24時間、各利用者は30回/分です。同じIPの認証前リクエストにも60回/分の制限があります。Google Booksへの実送信は全体で900回/太平洋時間の日付・40回/分までとし、到達後は補完APIを使用します。検索結果の再利用は提供元のCache-Controlを優先し、最大24時間・250件まで。Googleの現在のprivate/max-age=0応答は共有保存せず、Open Library・NDL等の保存可能な応答を共有します。新しい有料サービス・課金設定は追加していません。詳細は `outputs/catalog-protection.md` を参照してください。
 
 ## 既存版
 

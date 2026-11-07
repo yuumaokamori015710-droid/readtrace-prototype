@@ -40,8 +40,9 @@ GitHub Pages -> readtrace-books Edge Function -> Google Books API
   Books quotas of 1,000 queries/day and 100 queries/minute/user. These are observed
   project limits, not a promise of unlimited free service.
 - Debouncing, caching, provider timeouts and rate-limit backoff reduce API traffic.
-  The public metadata endpoint has best-effort per-instance limits, not a durable
-  global abuse-control boundary.
+  Database-backed budgets and cache leases are shared across function instances.
+  Google requests stop at 900/day and 40/minute; individual search allowances and
+  the exact cache policy are documented in `catalog-protection.md`.
 - NDL Search requires visible credit and has usage guidance for continuous access.
 - Real Google login uses Supabase Auth; cloud shelves use `readtrace_records` with
   row-level security. Legacy guest/demo stores remain separate and importable.

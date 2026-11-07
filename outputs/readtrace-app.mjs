@@ -8,7 +8,7 @@ import {
 import { createCoverOrbit } from "./readtrace-orbit.mjs";
 import { authConfig } from "./readtrace-config.mjs";
 import { createAuth, emptyAccountData } from "./readtrace-auth.mjs";
-import { createBookClient, discoverySections, mergeBooks, workIdentity, canonicalIsbn } from "./readtrace-books.mjs";
+import { createBookClient, discoverySections, mergeBooks, workIdentity, canonicalIsbn, resultCacheMs } from "./readtrace-books.mjs?v=search-guard-1";
 import { createCloudStore } from "./readtrace-cloud.mjs";
 
 const app = document.querySelector("#app");
@@ -30,7 +30,7 @@ const mobileShelf = matchMedia('(max-width: 800px)');
 let shelfView = localStorage.getItem('readtrace:shelf-view:v1') || 'grid';
 let orbitController = null;
 const revealed = new Set();
-const books = createBookClient({ endpoint: `${authConfig.url}/functions/v1/readtrace-books`, publishableKey: authConfig.publishableKey });
+const books = createBookClient({ endpoint: `${authConfig.url}/functions/v1/readtrace-books`, publishableKey: authConfig.publishableKey, getAccessToken: async () => (await auth.client?.auth.getSession())?.data?.session?.access_token || "" });
 const works = new Map(catalog.map((work) => [work.id, work]));
 const discoveryCache = new Map();
 let searchField = "all", searchOrder = "relevance", searchPage = 1, searchResults = [], searchMore = false;
@@ -633,8 +633,14 @@ function hydrateDiscovery() {
       const target = $(`#discovery-${section.id}`);
       if (!target) return;
       try {
-        const result = discoveryCache.get(section.id) || await books.search({ query: section.query, order: section.order || "relevance", page: 1 });
-        discoveryCache.set(section.id, result);
+        const cached = discoveryCache.get(section.id);
+        const hit = cached?.expires > Date.now();
+        const result = hit ? cached.value : await books.search({ query: section.query, order: section.order || "relevance", page: 1 });
+        if (!hit) {
+          const lifetime = resultCacheMs(result);
+          if (lifetime > 0) discoveryCache.set(section.id, { value: result, expires: Date.now() + lifetime });
+          else discoveryCache.delete(section.id);
+        }
         if (!target.isConnected) return;
         result.items.forEach((w) => works.set(w.id, w));
         target.innerHTML = result.items.length ? result.items.slice(0, 8).map((w) => `<button class="discovery-book" data-action="work-detail" data-id="${esc(w.id)}">${cover(w)}<strong>${esc(w.title)}</strong><small>${esc(w.creator)}</small></button>`).join("") : '<p class="muted">この条件では本が見つかりませんでした。</p>';
