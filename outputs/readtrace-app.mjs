@@ -37,6 +37,7 @@ let orbitIntroduced = false;
 let orbitController = null;
 const revealed = new Set();
 const revealedImpressions = new Set();
+const composingImpressions = new WeakSet();
 const books = createBookClient({ endpoint: `${authConfig.url}/functions/v1/readtrace-books`, publishableKey: authConfig.publishableKey, getAccessToken: async () => (await auth.client?.auth.getSession())?.data?.session?.access_token || "" });
 const works = new Map(catalog.map((work) => [work.id, work]));
 const discoveryCache = new Map();
@@ -725,7 +726,7 @@ function openEditor(work, record = null, manual = false, initialStatus = "done")
         <label>状態<select name="status" id="edit-status">${Object.entries(labels[work.type]).map(([key,label]) => `<option value="${key}" ${r.status === key ? "selected" : ""}>${label}</option>`).join("")}</select></label>
         <div class="completion-fields" id="completion-fields" ${r.status !== "done" ? "hidden" : ""}>
           <label for="impression">この作品を一言でいうと？</label>
-          <input id="impression" name="impression" type="text" value="${esc(r.impression)}" aria-describedby="impression-counter impression-error" autocomplete="off">
+          <input id="impression" name="impression" type="text" value="${esc(r.impression)}" aria-describedby="impression-counter impression-error" autocomplete="off" enterkeyhint="done">
           <div class="impression-hint"><span>20文字以内</span><output id="impression-counter" for="impression"></output></div>
           <p class="error" id="impression-error" aria-live="polite" hidden></p>
           <div class="completion-inputs"><label><span id="completed-label"></span><input name="completedAt" type="date" value="${esc(completed)}" ${unknown ? "disabled" : ""}></label><label class="check-label"><input name="dateUnknown" type="checkbox" ${unknown ? "checked" : ""}>日付不明</label></div>
@@ -740,7 +741,7 @@ function openEditor(work, record = null, manual = false, initialStatus = "done")
         <details class="record-fold"><summary>公開範囲・開始日</summary><div class="form-grid record-options"><label>公開範囲<select name="visibility"><option value="public" ${r.visibility === "public" ? "selected" : ""}>公開（ログインユーザー）</option><option value="private" ${r.visibility === "private" ? "selected" : ""}>非公開（自分だけ）</option></select></label><label><span id="started-label"></span><input name="startedAt" type="date" value="${esc(r.startedAt)}"></label></div></details>
       </div>
       <div class="error" id="record-error" role="alert"></div>
-      <div class="dialog-actions">${record ? action("delete-record", icon("trash-2"), `data-id="${record.id}" aria-label="記録を削除" title="記録を削除"`, "btn danger") : ""}${action("close", "キャンセル")}<button class="btn primary" type="submit">${icon("check")}${record ? "変更を保存" : "棚に保存"}</button></div>
+      <div class="dialog-actions">${record ? action("delete-record", icon("trash-2"), `data-id="${record.id}" aria-label="記録を削除" title="記録を削除"`, "btn danger") : ""}${action("close", "キャンセル")}${action("save-record", icon("check") + (record ? "変更を保存" : "棚に保存"), "", "btn primary")}</div>
     </form>`,
   );
   modal.dataset.media = work.type;
@@ -1028,6 +1029,7 @@ document.addEventListener("click", async (event) => {
         route() === "/shelf" && view.filter === "want" ? "want" : "done",
       );
     else if (a === "select-work") selectWork(works.get(id), route() === "/shelf" && view.filter === "want" ? "want" : "done");
+    else if (a === "save-record" && b.form) await saveForm(b.form, b);
     else if (a === "clear-axis") updateAxis(b.closest("[data-axis]"), null);
     else if (a === "reveal-impression" && store.get(id, viewer)) {
       revealedImpressions.add(id);
@@ -1096,7 +1098,7 @@ document.addEventListener("click", async (event) => {
 });
 document.addEventListener("input", (event) => {
   const target = event.target;
-  if (target.id === "impression" && !event.isComposing) updateImpression();
+  if (target.id === "impression" && !event.isComposing && !composingImpressions.has(target)) updateImpression();
   if (target.id === "shelf-search") {
     view.query = target.value;
     renderShelfGrid();
@@ -1117,8 +1119,13 @@ document.addEventListener("input", (event) => {
     $("#people-empty").hidden = shown !== 0;
   }
 });
+document.addEventListener("compositionstart", (event) => {
+  if (event.target.id === "impression") composingImpressions.add(event.target);
+});
 document.addEventListener("compositionend", (event) => {
-  if (event.target.id === "impression") updateImpression();
+  if (event.target.id !== "impression") return;
+  composingImpressions.delete(event.target);
+  updateImpression();
 });
 document.addEventListener("change", (event) => {
   if (event.target.id === "rating-filter") { view.ratingFilter = event.target.value; renderShelfGrid(); }
@@ -1143,7 +1150,7 @@ document.addEventListener("change", (event) => {
     syncEditorStatus();
   }
 });
-document.addEventListener("submit", async (event) => {
+document.addEventListener("submit", (event) => {
   const form = event.target;
   if (
     !["register-form", "record-form", "comment-form", "goal-form", "import-form"].includes(
@@ -1152,9 +1159,16 @@ document.addEventListener("submit", async (event) => {
   )
     return;
   event.preventDefault();
+  // An IME confirmation key can be delivered after compositionend on WebKit.
+  if (form.id !== "record-form") void saveForm(form, event.submitter || form.querySelector('[type="submit"]'));
+});
+async function saveForm(form, submitter) {
   if (form.dataset.saving) return;
+  if (form.id === "record-form" && composingImpressions.has(form.elements.namedItem("impression"))) {
+    toast("一言感想の変換を確定してから保存してください。");
+    return;
+  }
   form.dataset.saving = "true";
-  const submitter = form.querySelector('[type="submit"]');
   if (submitter) { submitter.disabled = true; submitter.setAttribute("aria-busy", "true"); }
   const currentStore = store, requester = viewer, generation = accountVersion;
   const sameForm = () => store === currentStore && viewer === requester && generation === accountVersion && form.isConnected;
@@ -1257,7 +1271,7 @@ document.addEventListener("submit", async (event) => {
     delete form.dataset.saving;
     if (submitter?.isConnected) { submitter.disabled = false; submitter.removeAttribute("aria-busy"); }
   }
-});
+}
 document.addEventListener("keydown", (event) => {
   if (
     event.target.matches(".tab") &&
